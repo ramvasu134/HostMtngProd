@@ -14,8 +14,8 @@ databases:
     databaseName: meeting_db
     user: meeting_user
     # PRODUCTION: Use 'standard' or 'pro' for SLA, backups, high availability
-    # Free tier has 90-day retention limit and no backups
-    plan: starter  # Upgrade from 'free' for production use
+    # Available plans: free, basic, standard, pro (starter is deprecated)
+    plan: basic  # 'basic' = $7/mo, 'free' = 90-day limit, 'standard' = production-ready
     region: oregon
     # Enable point-in-time recovery for production
     # ipAllowList: []  # Restrict to known IPs in production
