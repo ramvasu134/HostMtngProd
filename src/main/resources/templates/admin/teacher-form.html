@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Add New Teacher - Host Mtng Admin</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        :root {
+            --bg-primary: #0f172a;
+            --bg-secondary: #1e293b;
+            --bg-card: #334155;
+            --text-primary: #f1f5f9;
+            --text-secondary: #94a3b8;
+            --accent-blue: #3b82f6;
+            --accent-green: #22c55e;
+            --accent-orange: #f97316;
+        }
+
+        body {
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 40px 20px;
+        }
+
+        .form-container {
+            width: 100%;
+            max-width: 600px;
+        }
+
+        .back-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            color: var(--text-secondary);
+            text-decoration: none;
+            margin-bottom: 24px;
+            font-size: 14px;
+        }
+
+        .back-link:hover {
+            color: var(--accent-blue);
+        }
+
+        .form-card {
+            background: var(--bg-secondary);
+            border-radius: 20px;
+            padding: 40px;
+            border: 1px solid rgba(255,255,255,0.05);
+        }
+
+        .form-header {
+            text-align: center;
+            margin-bottom: 32px;
+        }
+
+        .form-icon {
+            width: 72px;
+            height: 72px;
+            background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+            border-radius: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 32px;
+            margin: 0 auto 16px;
+        }
+
+        .form-title {
+            font-size: 26px;
+            font-weight: 700;
+        }
+
+        .form-subtitle {
+            color: var(--text-secondary);
+            margin-top: 8px;
+        }
+
+        .alert {
+            padding: 14px 18px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 14px;
+        }
+
+        .alert-error {
+            background: rgba(239, 68, 68, 0.15);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            color: #fca5a5;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-label {
+            display: block;
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            margin-bottom: 8px;
+        }
+
+        .form-label .required {
+            color: #ef4444;
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 14px 18px;
+            background: var(--bg-card);
+            border: 2px solid transparent;
+            border-radius: 12px;
+            color: var(--text-primary);
+            font-size: 15px;
+            transition: all 0.2s;
+        }
+
+        .form-input:focus {
+            outline: none;
+            border-color: var(--accent-blue);
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+        }
+
+        .form-input::placeholder {
+            color: var(--text-secondary);
+        }
+
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+        }
+
+        .avatar-section {
+            margin: 24px 0;
+            padding: 20px;
+            background: var(--bg-card);
+            border-radius: 12px;
+        }
+
+        .avatar-label {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            margin-bottom: 12px;
+            display: block;
+        }
+
+        .avatar-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 12px;
+        }
+
+        .avatar-option {
+            cursor: pointer;
+            border-radius: 12px;
+            padding: 8px;
+            transition: all 0.2s;
+            border: 2px solid transparent;
+        }
+
+        .avatar-option:hover {
+            background: rgba(59, 130, 246, 0.1);
+        }
+
+        .avatar-option.selected {
+            border-color: var(--accent-blue);
+            background: rgba(59, 130, 246, 0.15);
+        }
+
+        .avatar-option img {
+            width: 100%;
+            border-radius: 8px;
+        }
+
+        .btn {
+            width: 100%;
+            padding: 16px;
+            border-radius: 12px;
+            border: none;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            transition: all 0.2s;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(59, 130, 246, 0.4);
+        }
+
+        .info-box {
+            background: rgba(59, 130, 246, 0.1);
+            border: 1px solid rgba(59, 130, 246, 0.2);
+            border-radius: 10px;
+            padding: 16px;
+            margin-top: 20px;
+        }
+
+        .info-box p {
+            font-size: 13px;
+            color: #93c5fd;
+            line-height: 1.5;
+        }
+
+        .info-box i {
+            margin-right: 6px;
+        }
+
+        @media (max-width: 480px) {
+            .form-row {
+                grid-template-columns: 1fr;
+            }
+            .avatar-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="form-container">
+        <a href="/admin/dashboard" class="back-link">
+            <i class="fas fa-arrow-left"></i> Back to Dashboard
+        </a>
+
+        <div class="form-card">
+            <div class="form-header">
+                <div class="form-icon"><i class="fas fa-user-plus"></i></div>
+                <h1 class="form-title">Add New Teacher</h1>
+                <p class="form-subtitle">Create a new teacher account with login credentials</p>
+            </div>
+
+            <div th:if="${error}" class="alert alert-error">
+                <i class="fas fa-exclamation-circle"></i>
+                <span th:text="${error}">Error message</span>
+            </div>
+
+            <form th:action="@{/admin/teachers}" method="post">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">Teacher Code <span class="required">*</span></label>
+                        <input type="text" name="teacherName" class="form-input"
+                               placeholder="e.g., SMITH" required pattern="[A-Za-z0-9]+"
+                               title="Alphanumeric only, no spaces"
+                               style="text-transform: uppercase;">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Display Name <span class="required">*</span></label>
+                        <input type="text" name="displayName" class="form-input"
+                               placeholder="e.g., John Smith" required>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">Username <span class="required">*</span></label>
+                        <input type="text" name="username" class="form-input" id="usernameInput"
+                               placeholder="e.g., john_smith" required pattern="[a-zA-Z0-9_]+"
+                               title="Alphanumeric and underscore only">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Password <span class="required">*</span></label>
+                        <input type="text" name="password" class="form-input"
+                               placeholder="Create a password" required minlength="6">
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">Email</label>
+                        <input type="email" name="email" class="form-input"
+                               placeholder="teacher@example.com">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Phone</label>
+                        <input type="tel" name="phone" class="form-input"
+                               placeholder="+1 234 567 8900">
+                    </div>
+                </div>
+
+                <div class="avatar-section">
+                    <label class="avatar-label">Select Avatar</label>
+                    <div class="avatar-grid" id="avatarGrid">
+                        <div th:each="avatar, idx : ${avatarOptions}" class="avatar-option"
+                             th:classappend="${idx.index == 0 ? 'selected' : ''}"
+                             onclick="selectAvatar(this)">
+                            <img th:src="${avatar}" alt="Avatar option">
+                            <input type="radio" name="selectedAvatar" th:value="${avatar}"
+                                   th:checked="${idx.index == 0}" style="display: none;">
+                        </div>
+                    </div>
+                </div>
+
+                <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-user-plus"></i> Create Teacher Account
+                </button>
+
+                <div class="info-box">
+                    <p><i class="fas fa-info-circle"></i>
+                    The teacher will use their <strong>username</strong> and <strong>password</strong> to login.
+                    Students will be associated using the <strong>Teacher Code</strong>.</p>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        function selectAvatar(element) {
+            document.querySelectorAll('.avatar-option').forEach(el => el.classList.remove('selected'));
+            element.classList.add('selected');
+            element.querySelector('input[type="radio"]').checked = true;
+        }
+
+        // Update avatar previews when username changes
+        document.getElementById('usernameInput').addEventListener('input', function(e) {
+            const username = e.target.value || 'newteacher';
+            const avatarStyles = ['avataaars', 'avataaars', 'bottts', 'fun-emoji', 'lorelei', 'personas', 'notionists', 'adventurer'];
+            const colors = ['b6e3f4', 'c0aede', 'd1d4f9', 'ffd5dc', 'ffdfbf', 'b6e3f4', 'c0aede', 'd1d4f9'];
+
+            document.querySelectorAll('.avatar-option').forEach((el, idx) => {
+                const style = avatarStyles[idx % avatarStyles.length];
+                const color = colors[idx % colors.length];
+                const url = `https://api.dicebear.com/7.x/${style}/svg?seed=${username}${idx}&backgroundColor=${color}`;
+                el.querySelector('img').src = url;
+                el.querySelector('input').value = url;
+            });
+        });
+    </script>
+</body>
+</html>
+

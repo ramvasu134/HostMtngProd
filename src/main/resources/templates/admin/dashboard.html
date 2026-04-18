@@ -1,0 +1,1058 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard - Host Mtng</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        :root {
+            --bg-primary: #0f172a;
+            --bg-secondary: #1e293b;
+            --bg-card: #334155;
+            --text-primary: #f1f5f9;
+            --text-secondary: #94a3b8;
+            --accent-blue: #3b82f6;
+            --accent-purple: #8b5cf6;
+            --accent-green: #22c55e;
+            --accent-yellow: #eab308;
+            --accent-red: #ef4444;
+            --accent-orange: #f97316;
+        }
+
+        body {
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+        }
+
+        /* Sidebar */
+        .sidebar {
+            position: fixed;
+            left: 0;
+            top: 0;
+            width: 260px;
+            height: 100vh;
+            background: var(--bg-secondary);
+            padding: 24px;
+            border-right: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 40px;
+        }
+
+        .logo-icon {
+            width: 48px;
+            height: 48px;
+            background: linear-gradient(135deg, #f97316, #eab308);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+        }
+
+        .logo-text {
+            font-size: 22px;
+            font-weight: 700;
+        }
+
+        .logo-text span { color: #f97316; }
+
+        .nav-menu {
+            list-style: none;
+        }
+
+        .nav-item {
+            margin-bottom: 8px;
+        }
+
+        .nav-link {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 14px 16px;
+            color: var(--text-secondary);
+            text-decoration: none;
+            border-radius: 10px;
+            transition: all 0.2s;
+        }
+
+        .nav-link:hover, .nav-link.active {
+            background: rgba(59, 130, 246, 0.1);
+            color: var(--accent-blue);
+        }
+
+        .nav-link.active {
+            background: rgba(59, 130, 246, 0.2);
+        }
+
+        .nav-link i { width: 20px; text-align: center; }
+
+        /* Main Content */
+        .main-content {
+            margin-left: 260px;
+            padding: 32px;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 32px;
+        }
+
+        .page-title {
+            font-size: 28px;
+            font-weight: 700;
+        }
+
+        .admin-profile {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .admin-avatar {
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            background: var(--bg-card);
+        }
+
+        .admin-name {
+            font-weight: 600;
+        }
+
+        .admin-role {
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+
+        /* Stats Grid */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 20px;
+            margin-bottom: 32px;
+        }
+
+        .stat-card {
+            background: var(--bg-secondary);
+            border-radius: 16px;
+            padding: 24px;
+            border: 1px solid rgba(255,255,255,0.05);
+        }
+
+        .stat-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 22px;
+            margin-bottom: 16px;
+        }
+
+        .stat-icon.blue { background: rgba(59, 130, 246, 0.2); color: var(--accent-blue); }
+        .stat-icon.green { background: rgba(34, 197, 94, 0.2); color: var(--accent-green); }
+        .stat-icon.purple { background: rgba(139, 92, 246, 0.2); color: var(--accent-purple); }
+        .stat-icon.orange { background: rgba(249, 115, 22, 0.2); color: var(--accent-orange); }
+
+        .stat-value {
+            font-size: 32px;
+            font-weight: 700;
+            margin-bottom: 4px;
+        }
+
+        .stat-label {
+            color: var(--text-secondary);
+            font-size: 14px;
+        }
+
+        /* Teachers Table */
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .section-title {
+            font-size: 20px;
+            font-weight: 600;
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 20px;
+            border-radius: 10px;
+            border: none;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            text-decoration: none;
+            transition: all 0.2s;
+        }
+
+        .btn-primary {
+            background: var(--accent-blue);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #2563eb;
+            transform: translateY(-2px);
+        }
+
+        .btn-danger {
+            background: var(--accent-red);
+            color: white;
+        }
+
+        .btn-sm {
+            padding: 8px 14px;
+            font-size: 13px;
+        }
+
+        .teachers-table {
+            background: var(--bg-secondary);
+            border-radius: 16px;
+            overflow: hidden;
+            border: 1px solid rgba(255,255,255,0.05);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th, td {
+            padding: 16px 20px;
+            text-align: left;
+        }
+
+        th {
+            background: var(--bg-card);
+            font-weight: 600;
+            color: var(--text-secondary);
+            font-size: 13px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        tr:not(:last-child) td {
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+        }
+
+        .teacher-info {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .teacher-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 10px;
+            background: var(--bg-card);
+        }
+
+        .teacher-name {
+            font-weight: 600;
+        }
+
+        .teacher-username {
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .badge-active {
+            background: rgba(34, 197, 94, 0.2);
+            color: var(--accent-green);
+        }
+
+        .badge-inactive {
+            background: rgba(239, 68, 68, 0.2);
+            color: var(--accent-red);
+        }
+
+        .actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .action-btn {
+            width: 36px;
+            height: 36px;
+            border-radius: 8px;
+            border: none;
+            background: var(--bg-card);
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .action-btn:hover {
+            background: var(--accent-blue);
+            color: white;
+        }
+
+        .action-btn.danger:hover {
+            background: var(--accent-red);
+        }
+
+        .action-btn.share-btn:hover {
+            background: var(--accent-green);
+        }
+
+        /* Share Credentials Modal */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.7);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+            backdrop-filter: blur(4px);
+        }
+
+        .modal-overlay.show {
+            display: flex;
+        }
+
+        .share-modal {
+            background: var(--bg-secondary);
+            border-radius: 20px;
+            width: 90%;
+            max-width: 480px;
+            box-shadow: 0 25px 50px rgba(0, 0, 0, 0.5);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            animation: modalSlideIn 0.3s ease;
+        }
+
+        @keyframes modalSlideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-20px) scale(0.95);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0) scale(1);
+            }
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px 24px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .modal-header h3 {
+            font-size: 18px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .modal-header h3 i {
+            color: var(--accent-green);
+        }
+
+        .modal-close {
+            background: transparent;
+            border: none;
+            color: var(--text-secondary);
+            cursor: pointer;
+            font-size: 18px;
+            padding: 8px;
+            border-radius: 8px;
+            transition: all 0.2s;
+        }
+
+        .modal-close:hover {
+            background: rgba(255, 255, 255, 0.1);
+            color: var(--text-primary);
+        }
+
+        .modal-body {
+            padding: 24px;
+        }
+
+        .credentials-info {
+            background: rgba(15, 23, 42, 0.6);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .credential-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .credential-row:last-child {
+            border-bottom: none;
+        }
+
+        .credential-label {
+            font-size: 13px;
+            color: var(--text-secondary);
+            min-width: 110px;
+        }
+
+        .credential-value {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text-primary);
+            word-break: break-all;
+        }
+
+        .credential-value.password {
+            font-family: 'Courier New', monospace;
+            letter-spacing: 1px;
+            background: rgba(34, 197, 94, 0.1);
+            padding: 4px 10px;
+            border-radius: 6px;
+            color: var(--accent-green);
+        }
+
+        .credential-value .loading {
+            color: var(--text-secondary);
+        }
+
+        .share-options {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+        }
+
+        .share-btn-option {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            padding: 14px 20px;
+            border: none;
+            border-radius: 12px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .share-btn-option:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        }
+
+        .share-btn-option.whatsapp {
+            background: #25D366;
+            color: white;
+        }
+
+        .share-btn-option.telegram {
+            background: #0088cc;
+            color: white;
+        }
+
+        .share-btn-option.email {
+            background: var(--accent-orange);
+            color: white;
+        }
+
+        .share-btn-option.copy {
+            background: var(--bg-card);
+            color: var(--text-primary);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .share-btn-option.sms {
+            background: #5856D6;
+            color: white;
+        }
+
+        .share-feedback {
+            margin-top: 16px;
+            padding: 12px 16px;
+            border-radius: 10px;
+            text-align: center;
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        .share-feedback.success {
+            background: rgba(34, 197, 94, 0.15);
+            color: #86efac;
+            border: 1px solid rgba(34, 197, 94, 0.3);
+        }
+
+        .share-feedback.error {
+            background: rgba(239, 68, 68, 0.15);
+            color: #fca5a5;
+            border: 1px solid rgba(239, 68, 68, 0.3);
+        }
+
+        .no-password-warning {
+            background: rgba(249, 115, 22, 0.15);
+            border: 1px solid rgba(249, 115, 22, 0.3);
+            color: #fed7aa;
+            padding: 12px 16px;
+            border-radius: 10px;
+            margin-bottom: 16px;
+            font-size: 13px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        /* Alerts */
+        .alert {
+            padding: 16px 20px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .alert-success {
+            background: rgba(34, 197, 94, 0.15);
+            border: 1px solid rgba(34, 197, 94, 0.3);
+            color: #86efac;
+        }
+
+        .alert-error {
+            background: rgba(239, 68, 68, 0.15);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            color: #fca5a5;
+        }
+
+        .alert-info {
+            background: rgba(59, 130, 246, 0.15);
+            border: 1px solid rgba(59, 130, 246, 0.3);
+            color: #93c5fd;
+        }
+
+        /* Cleanup Card */
+        .cleanup-card {
+            background: linear-gradient(135deg, #1e293b, #0f172a);
+            border-radius: 16px;
+            padding: 24px;
+            margin-top: 32px;
+            border: 1px solid rgba(249, 115, 22, 0.2);
+        }
+
+        .cleanup-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+
+        .cleanup-title {
+            font-size: 18px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .cleanup-title i {
+            color: var(--accent-orange);
+        }
+
+        .cleanup-stats {
+            display: flex;
+            gap: 32px;
+        }
+
+        .cleanup-stat {
+            text-align: center;
+        }
+
+        .cleanup-stat-value {
+            font-size: 24px;
+            font-weight: 700;
+            color: var(--accent-orange);
+        }
+
+        .cleanup-stat-label {
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+
+        @media (max-width: 1200px) {
+            .stats-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
+        @media (max-width: 768px) {
+            .sidebar {
+                display: none;
+            }
+            .main-content {
+                margin-left: 0;
+            }
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Sidebar -->
+    <aside class="sidebar">
+        <div class="logo">
+            <div class="logo-icon"><i class="fas fa-shield-alt"></i></div>
+            <div class="logo-text">Host<span>Mtng</span></div>
+        </div>
+
+        <ul class="nav-menu">
+            <li class="nav-item">
+                <a href="/admin/dashboard" class="nav-link active">
+                    <i class="fas fa-th-large"></i> Dashboard
+                </a>
+            </li>
+            <li class="nav-item">
+                <a href="/admin/teachers" class="nav-link">
+                    <i class="fas fa-chalkboard-teacher"></i> Teachers
+                </a>
+            </li>
+            <li class="nav-item">
+                <a href="/admin/teachers/new" class="nav-link">
+                    <i class="fas fa-user-plus"></i> Add Teacher
+                </a>
+            </li>
+            <li class="nav-item">
+                <form th:action="@{/logout}" method="post" style="margin: 0;">
+                    <button type="submit" class="nav-link" style="width: 100%; border: none; background: none; cursor: pointer; text-align: left;">
+                        <i class="fas fa-sign-out-alt"></i> Logout
+                    </button>
+                </form>
+            </li>
+        </ul>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        <header class="header">
+            <h1 class="page-title">Admin Dashboard</h1>
+            <div class="admin-profile">
+                <img th:src="${admin.teacherLogo ?: 'https://api.dicebear.com/7.x/bottts/svg?seed=admin'}"
+                     alt="Admin" class="admin-avatar">
+                <div>
+                    <div class="admin-name" th:text="${admin.displayName}">Administrator</div>
+                    <div class="admin-role">System Admin</div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Alerts -->
+        <div th:if="${success}" class="alert alert-success">
+            <i class="fas fa-check-circle"></i>
+            <span th:text="${success}">Success message</span>
+        </div>
+        <div th:if="${error}" class="alert alert-error">
+            <i class="fas fa-exclamation-circle"></i>
+            <span th:text="${error}">Error message</span>
+        </div>
+        <div th:if="${credentials}" class="alert alert-info">
+            <i class="fas fa-key"></i>
+            <span th:text="${credentials}">Credentials</span>
+        </div>
+
+        <!-- Stats Grid -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-icon blue"><i class="fas fa-chalkboard-teacher"></i></div>
+                <div class="stat-value" th:text="${stats.totalTeachers}">0</div>
+                <div class="stat-label">Total Teachers</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon green"><i class="fas fa-user-graduate"></i></div>
+                <div class="stat-value" th:text="${stats.totalStudents}">0</div>
+                <div class="stat-label">Total Students</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon purple"><i class="fas fa-video"></i></div>
+                <div class="stat-value" th:text="${stats.totalMeetings}">0</div>
+                <div class="stat-label">Total Meetings</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon orange"><i class="fas fa-microphone"></i></div>
+                <div class="stat-value" th:text="${stats.totalRecordings}">0</div>
+                <div class="stat-label">Recordings</div>
+            </div>
+        </div>
+
+        <!-- Teachers Section -->
+        <div class="section-header">
+            <h2 class="section-title">Teachers</h2>
+            <a href="/admin/teachers/new" class="btn btn-primary">
+                <i class="fas fa-plus"></i> Add Teacher
+            </a>
+        </div>
+
+        <div class="teachers-table">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Teacher</th>
+                        <th>Teacher Code</th>
+                        <th>Status</th>
+                        <th>Last Login</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr th:each="teacher : ${teachers}">
+                        <td>
+                            <div class="teacher-info">
+                                <img th:src="${teacher.teacherLogo ?: 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + teacher.username}"
+                                     alt="Avatar" class="teacher-avatar">
+                                <div>
+                                    <div class="teacher-name" th:text="${teacher.displayName}">Teacher Name</div>
+                                    <div class="teacher-username" th:text="'@' + ${teacher.username}">@username</div>
+                                </div>
+                            </div>
+                        </td>
+                        <td th:text="${teacher.teacherName}">CODE</td>
+                        <td>
+                            <span th:if="${teacher.active}" class="badge badge-active">Active</span>
+                            <span th:unless="${teacher.active}" class="badge badge-inactive">Inactive</span>
+                        </td>
+                        <td th:text="${teacher.lastLoginAt != null ? #temporals.format(teacher.lastLoginAt, 'dd MMM, HH:mm') : 'Never'}">
+                            Never
+                        </td>
+                        <td>
+                            <div class="actions">
+                                <button class="action-btn share-btn"
+                                        th:data-id="${teacher.id}"
+                                        th:data-name="${teacher.displayName}"
+                                        th:data-username="${teacher.username}"
+                                        th:data-code="${teacher.teacherName}"
+                                        onclick="shareTeacherCredentials(this)"
+                                        title="Share Credentials">
+                                    <i class="fas fa-share-alt"></i>
+                                </button>
+                                <a th:href="@{/admin/teachers/{id}/edit(id=${teacher.id})}" class="action-btn" title="Edit">
+                                    <i class="fas fa-edit"></i>
+                                </a>
+                                <form th:action="@{/admin/teachers/{id}/toggle-status(id=${teacher.id})}" method="post" style="display:inline;">
+                                    <button type="submit" class="action-btn" th:title="${teacher.active ? 'Deactivate' : 'Activate'}">
+                                        <i th:class="${teacher.active ? 'fas fa-ban' : 'fas fa-check'}"></i>
+                                    </button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                    <tr th:if="${#lists.isEmpty(teachers)}">
+                        <td colspan="5" style="text-align: center; padding: 40px; color: var(--text-secondary);">
+                            <i class="fas fa-users" style="font-size: 48px; margin-bottom: 16px; display: block;"></i>
+                            No teachers found. Add your first teacher!
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Recording Cleanup Section -->
+        <div class="cleanup-card">
+            <div class="cleanup-header">
+                <div class="cleanup-title">
+                    <i class="fas fa-broom"></i>
+                    Recording Cleanup
+                </div>
+                <form th:action="@{/admin/cleanup/trigger}" method="post" style="display:inline;">
+                    <button type="submit" class="btn btn-primary btn-sm" onclick="return confirm('Are you sure you want to run cleanup now?')">
+                        <i class="fas fa-play"></i> Run Cleanup Now
+                    </button>
+                </form>
+            </div>
+            <div class="cleanup-stats">
+                <div class="cleanup-stat">
+                    <div class="cleanup-stat-value" th:text="${stats.pendingCleanup}">0</div>
+                    <div class="cleanup-stat-label">Pending Cleanup</div>
+                </div>
+                <div class="cleanup-stat">
+                    <div class="cleanup-stat-value" th:text="${stats.retentionDays}">7</div>
+                    <div class="cleanup-stat-label">Retention Days</div>
+                </div>
+                <div class="cleanup-stat">
+                    <div class="cleanup-stat-value" th:text="${stats.liveMeetings}">0</div>
+                    <div class="cleanup-stat-label">Live Meetings</div>
+                </div>
+            </div>
+            <p style="margin-top: 16px; color: var(--text-secondary); font-size: 14px;">
+                <i class="fas fa-info-circle"></i> Automatic cleanup runs daily at 2:00 AM.
+                Recordings older than <span th:text="${stats.retentionDays}">7</span> days are automatically deleted.
+            </p>
+        </div>
+    </main>
+
+    <!-- Share Credentials Modal -->
+    <div class="modal-overlay" id="shareModal" onclick="closeShareModal(event)">
+        <div class="share-modal" onclick="event.stopPropagation()">
+            <div class="modal-header">
+                <h3><i class="fas fa-share-alt"></i> Share Teacher Credentials</h3>
+                <button class="modal-close" onclick="closeShareModal()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="credentials-info">
+                    <div class="credential-row">
+                        <span class="credential-label">Teacher Name:</span>
+                        <span class="credential-value" id="shareTeacherName">-</span>
+                    </div>
+                    <div class="credential-row">
+                        <span class="credential-label">Teacher Code:</span>
+                        <span class="credential-value" id="shareTeacherCode">-</span>
+                    </div>
+                    <div class="credential-row">
+                        <span class="credential-label">Username:</span>
+                        <span class="credential-value" id="shareUsername">-</span>
+                    </div>
+                    <div class="credential-row">
+                        <span class="credential-label">Password:</span>
+                        <span class="credential-value password" id="sharePassword">
+                            <i class="fas fa-spinner fa-spin loading"></i>
+                        </span>
+                    </div>
+                </div>
+
+                <div id="noPasswordWarning" class="no-password-warning" style="display: none;">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <span>Password not available. Please reset the teacher's password first to share credentials.</span>
+                </div>
+
+                <div class="share-options">
+                    <button class="share-btn-option whatsapp" onclick="shareViaWhatsApp()">
+                        <i class="fab fa-whatsapp"></i>
+                        <span>WhatsApp</span>
+                    </button>
+                    <button class="share-btn-option sms" onclick="shareViaSMS()">
+                        <i class="fas fa-sms"></i>
+                        <span>SMS/Text</span>
+                    </button>
+                    <button class="share-btn-option telegram" onclick="shareViaTelegram()">
+                        <i class="fab fa-telegram"></i>
+                        <span>Telegram</span>
+                    </button>
+                    <button class="share-btn-option email" onclick="shareViaEmail()">
+                        <i class="fas fa-envelope"></i>
+                        <span>Email</span>
+                    </button>
+                    <button class="share-btn-option copy" onclick="copyCredentialsToClipboard()">
+                        <i class="fas fa-copy"></i>
+                        <span>Copy Text</span>
+                    </button>
+                </div>
+
+                <div id="shareFeedback" class="share-feedback" style="display: none;"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Auto-dismiss alerts after 5 seconds
+        setTimeout(() => {
+            document.querySelectorAll('.alert').forEach(alert => {
+                alert.style.transition = 'opacity 0.5s, transform 0.5s';
+                alert.style.opacity = '0';
+                alert.style.transform = 'translateY(-10px)';
+                setTimeout(() => alert.remove(), 500);
+            });
+        }, 5000);
+
+        // ===== Share Credentials Functions =====
+        let currentTeacher = {
+            id: '',
+            name: '',
+            username: '',
+            password: '',
+            code: '',
+            hasPassword: false
+        };
+
+        function shareTeacherCredentials(btn) {
+            const id = btn.dataset.id;
+            const name = btn.dataset.name;
+            const username = btn.dataset.username;
+            const code = btn.dataset.code;
+
+            currentTeacher = { id, name, username, password: '', code, hasPassword: false };
+
+            // Update modal UI
+            document.getElementById('shareTeacherName').textContent = name;
+            document.getElementById('shareTeacherCode').textContent = code;
+            document.getElementById('shareUsername').textContent = username;
+            document.getElementById('sharePassword').innerHTML = '<i class="fas fa-spinner fa-spin loading"></i>';
+            document.getElementById('shareFeedback').style.display = 'none';
+            document.getElementById('noPasswordWarning').style.display = 'none';
+
+            // Show modal
+            document.getElementById('shareModal').classList.add('show');
+
+            // Fetch credentials from API
+            fetch('/api/admin/teachers/' + id + '/credentials')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success && data.hasPassword) {
+                        currentTeacher.password = data.password;
+                        currentTeacher.hasPassword = true;
+                        document.getElementById('sharePassword').textContent = data.password;
+                    } else {
+                        currentTeacher.password = '';
+                        currentTeacher.hasPassword = false;
+                        document.getElementById('sharePassword').textContent = '(not available)';
+                        document.getElementById('noPasswordWarning').style.display = 'flex';
+                    }
+                })
+                .catch(error => {
+                    console.error('Error fetching credentials:', error);
+                    document.getElementById('sharePassword').textContent = '(network error)';
+                    showShareFeedback('Failed to fetch credentials', 'error');
+                });
+        }
+
+        function closeShareModal(event) {
+            if (event && event.target !== document.getElementById('shareModal')) {
+                return;
+            }
+            document.getElementById('shareModal').classList.remove('show');
+        }
+
+        function getShareMessage() {
+            const appUrl = window.location.origin;
+            const passwordLine = currentTeacher.hasPassword
+                ? `🔑 *Password:* ${currentTeacher.password}`
+                : `🔑 *Password:* (Please ask admin for password)`;
+
+            return `🎓 *Teacher Login Credentials*
+
+📱 *App URL:* ${appUrl}/login
+
+👤 *Teacher Name:* ${currentTeacher.name}
+🏫 *Teacher Code:* ${currentTeacher.code}
+👤 *Username:* ${currentTeacher.username}
+${passwordLine}
+
+_Please login using the above credentials to access your Host Mtng dashboard._`;
+        }
+
+        function shareViaWhatsApp() {
+            if (!currentTeacher.hasPassword) {
+                showShareFeedback('Password not available. Reset password first.', 'error');
+                return;
+            }
+            const message = encodeURIComponent(getShareMessage());
+            window.open('https://wa.me/?text=' + message, '_blank');
+            showShareFeedback('Opening WhatsApp...', 'success');
+        }
+
+        function shareViaSMS() {
+            if (!currentTeacher.hasPassword) {
+                showShareFeedback('Password not available. Reset password first.', 'error');
+                return;
+            }
+            // SMS uses sms: protocol
+            const message = getShareMessage().replace(/\*/g, '').replace(/\_/g, '');
+            const smsBody = encodeURIComponent(message);
+            // Try sms: protocol which works on mobile devices
+            window.open('sms:?body=' + smsBody, '_blank');
+            showShareFeedback('Opening SMS app...', 'success');
+        }
+
+        function shareViaTelegram() {
+            if (!currentTeacher.hasPassword) {
+                showShareFeedback('Password not available. Reset password first.', 'error');
+                return;
+            }
+            const message = encodeURIComponent(getShareMessage());
+            const url = encodeURIComponent(window.location.origin);
+            window.open('https://t.me/share/url?url=' + url + '&text=' + message, '_blank');
+            showShareFeedback('Opening Telegram...', 'success');
+        }
+
+        function shareViaEmail() {
+            if (!currentTeacher.hasPassword) {
+                showShareFeedback('Password not available. Reset password first.', 'error');
+                return;
+            }
+            const subject = encodeURIComponent('Your Host Mtng Teacher Login Credentials');
+            const body = encodeURIComponent(getShareMessage().replace(/\*/g, '').replace(/\_/g, ''));
+            window.open('mailto:?subject=' + subject + '&body=' + body, '_blank');
+            showShareFeedback('Opening Email app...', 'success');
+        }
+
+        function copyCredentialsToClipboard() {
+            if (!currentTeacher.hasPassword) {
+                showShareFeedback('Password not available. Reset password first.', 'error');
+                return;
+            }
+            const text = getShareMessage().replace(/\*/g, '').replace(/\_/g, '');
+            navigator.clipboard.writeText(text).then(() => {
+                showShareFeedback('Credentials copied to clipboard!', 'success');
+            }).catch(err => {
+                // Fallback for older browsers
+                const textarea = document.createElement('textarea');
+                textarea.value = text;
+                document.body.appendChild(textarea);
+                textarea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textarea);
+                showShareFeedback('Credentials copied to clipboard!', 'success');
+            });
+        }
+
+        function showShareFeedback(message, type) {
+            const feedback = document.getElementById('shareFeedback');
+            feedback.textContent = message;
+            feedback.className = 'share-feedback ' + type;
+            feedback.style.display = 'block';
+            setTimeout(() => {
+                feedback.style.display = 'none';
+            }, 3000);
+        }
+
+        // Close modal on Escape key
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                closeShareModal();
+            }
+        });
+    </script>
+</body>
+</html>
+
