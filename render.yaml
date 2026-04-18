@@ -34,7 +34,7 @@ services:
     healthCheckPath: /actuator/health
     
     # ── Scaling (requires paid plan) ──────────────────────────────────────────
-    numInstances: 2  # Minimum 2 for high availability
+    numInstances: 2  # Minimum 2 for high availability (requires standard plan+)
     # autoscaling:
     #   min: 2
     #   max: 5
@@ -84,6 +84,7 @@ services:
           property: password
 
       # ── Database Pool Size ─────────────────────────────────────────────────
+      # Keep per-instance pool conservative for multi-instance deployments
       - key: DB_POOL_SIZE
         value: "15"
 
