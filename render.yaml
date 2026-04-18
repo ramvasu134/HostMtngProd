@@ -94,7 +94,7 @@ services:
 
       # ── Data Seeding (DISABLED in production) ──────────────────────────────
       - key: SEED_ENABLED
-        value: "false"
+        value: "true"
 
       # ── WebSocket CORS Origins ─────────────────────────────────────────────
       # Set to your actual domain(s) in production
