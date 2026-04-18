@@ -6,7 +6,7 @@ databases:
   - name: meeting-db
     databaseName: meeting_db
     user: meeting_user
-    plan: standard
+    plan: basic_1gb
     region: oregon
 
 services:
