@@ -92,7 +92,8 @@ services:
       - key: JWT_SECRET
         generateValue: true
 
-      # ── Data Seeding (DISABLED in production) ──────────────────────────────
+      # ── Data Seeding (enable once to create superadmin + demo users) ───────
+      # After first successful login, set to "false" and redeploy for security
       - key: SEED_ENABLED
         value: "true"
 
