@@ -1,20 +1,63 @@
-# Render Configuration
+# ============================================================
+#  Render.com Blueprint  –  Host Student Meeting (WebRTC App)
+# ============================================================
 
-## Database Configuration
+databases:
+  - name: meeting-db
+    databaseName: meeting_db
+    user: meeting_user
+    plan: Pro-1gb
+    region: oregon
 
-database:
-  plan: Pro-1gb
-
-## Web Service Configuration
-
-web:
-  plan: pro
-  env:
-    DATABASE_URL: "your_database_url"
-    API_KEY: "your_api_key"
-  scaling:
-    min_instances: 1
-    max_instances: 5
-  jvm_options:
-    -Xmx1024m
-    -Xms512m
+services:
+  - type: web
+    name: host-student-meeting
+    runtime: docker
+    plan: pro
+    region: oregon
+    branch: main
+    healthCheckPath: /actuator/health
+    numInstances: 2
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    autoDeploy: true
+    
+    envVars:
+      - key: SPRING_PROFILES_ACTIVE
+        value: prod
+      - key: DB_HOST
+        fromDatabase:
+          name: meeting-db
+          property: host
+      - key: DB_PORT
+        fromDatabase:
+          name: meeting-db
+          property: port
+      - key: DB_NAME
+        fromDatabase:
+          name: meeting-db
+          property: database
+      - key: DB_USER
+        fromDatabase:
+          name: meeting-db
+          property: user
+      - key: DB_PASSWORD
+        fromDatabase:
+          name: meeting-db
+          property: password
+      - key: DB_POOL_SIZE
+        value: "15"
+      - key: JWT_SECRET
+        generateValue: true
+      - key: SEED_ENABLED
+        value: "false"
+      - key: APP_WEBSOCKET_ALLOWED_ORIGINS
+        value: "https://*.onrender.com,https://your-domain.com"
+      - key: JAVA_OPTS
+        value: "-server -XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0 -XX:+UseG1GC"
+      - key: APP_UPLOAD_DIR
+        value: /app/uploads
+      - key: APP_RECORDING_DIR
+        value: /app/recordings
+      - key: APP_PROFILE_PHOTOS_DIR
+        value: /app/profile-photos
