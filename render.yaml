@@ -13,8 +13,11 @@ databases:
   - name: meeting-db
     databaseName: meeting_db
     user: meeting_user
-    # Professional plan with high availability and backups
-    plan: pro
+    # Render PostgreSQL plans (use hyphens):
+    # free | basic-256mb | basic-1gb | basic-4gb |
+    # pro-4gb | pro-8gb | pro-16gb | pro-32gb | pro-64gb | pro-128gb |
+    # pro-192gb | pro-256gb | pro-384gb | pro-512gb
+    plan: pro-4gb
     region: oregon
     # Enable point-in-time recovery for production
     # ipAllowList: []  # Restrict to known IPs in production
