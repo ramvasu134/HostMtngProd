@@ -389,6 +389,25 @@
             color: #c084fc;
         }
 
+        .terms-inline {
+            margin-top: 12px;
+            text-align: center;
+        }
+
+        .terms-inline a {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 14px;
+            border-radius: 8px;
+            border: 1px solid rgba(129, 140, 248, 0.35);
+            background: rgba(99, 102, 241, 0.12);
+            color: #c7d2fe;
+            text-decoration: none;
+            font-size: 12px;
+            font-weight: 700;
+        }
+
         /* Info text */
         .login-info {
             text-align: center;
@@ -472,6 +491,7 @@
 
             <!-- Single Login Form (Username + Password only) -->
             <form class="login-form" th:action="@{/login}" method="post">
+                <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}">
                 <div class="form-group">
                     <label for="username">Username</label>
                     <div class="input-wrapper">
@@ -497,6 +517,12 @@
                     <i class="fas fa-sign-in-alt"></i>
                     <span>Sign In</span>
                 </button>
+
+                <div class="terms-inline">
+                    <a th:href="@{/terms-and-conditions}">
+                        <i class="fas fa-file-contract"></i> View Terms & Conditions
+                    </a>
+                </div>
 
                 <div class="login-info">
                     <p><i class="fas fa-info-circle"></i>Teachers and Students use the same login</p>

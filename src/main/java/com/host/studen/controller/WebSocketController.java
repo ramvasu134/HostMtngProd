@@ -3,11 +3,13 @@ package com.host.studen.controller;
 import com.host.studen.model.ChatMessage;
 import com.host.studen.model.Meeting;
 import com.host.studen.model.Recording;
+import com.host.studen.model.Transcript;
 import com.host.studen.model.User;
 import com.host.studen.security.CustomUserDetails;
 import com.host.studen.service.ChatService;
 import com.host.studen.service.MeetingService;
 import com.host.studen.service.RecordingService;
+import com.host.studen.service.TranscriptService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -37,6 +39,9 @@ public class WebSocketController {
 
     @Autowired
     private RecordingService recordingService;
+
+    @Autowired
+    private TranscriptService transcriptService;
 
     // WebRTC Signaling
     @MessageMapping("/signal/{meetingCode}")
@@ -178,6 +183,97 @@ public class WebSocketController {
             log.error("Error auto-saving recording: {}", e.getMessage(), e);
             response.put("success", false);
             response.put("error", "Failed to save recording: " + e.getMessage());
+        }
+
+        return response;
+    }
+
+    /**
+     * Handle live transcript updates during meeting
+     * Called when speech is recognized and needs to be broadcast
+     */
+    @MessageMapping("/transcript/{meetingCode}")
+    @SendTo("/topic/transcript/{meetingCode}")
+    public Map<String, Object> handleTranscript(@DestinationVariable String meetingCode,
+                                               Map<String, Object> transcriptData,
+                                               SimpMessageHeaderAccessor headerAccessor) {
+        Map<String, Object> response = new HashMap<>();
+        
+        try {
+            Authentication auth = (Authentication) headerAccessor.getUser();
+            if (auth == null) {
+                response.put("success", false);
+                response.put("error", "Not authenticated");
+                return response;
+            }
+
+            CustomUserDetails userDetails = (CustomUserDetails) auth.getPrincipal();
+            User user = userDetails.getUser();
+
+            Meeting meeting = meetingService.findByMeetingCode(meetingCode).orElse(null);
+            if (meeting == null) {
+                response.put("success", false);
+                response.put("error", "Meeting not found");
+                return response;
+            }
+
+            // Extract transcript data
+            String transcriptText = (String) transcriptData.get("text");
+            String speakerName = (String) transcriptData.getOrDefault("speakerName", user.getDisplayName());
+            Long recordingId = transcriptData.containsKey("recordingId") 
+                    ? ((Number) transcriptData.get("recordingId")).longValue() 
+                    : null;
+            Integer startTime = transcriptData.get("startTime") != null 
+                    ? Integer.parseInt(transcriptData.get("startTime").toString()) 
+                    : 0;
+            Integer endTime = transcriptData.get("endTime") != null 
+                    ? Integer.parseInt(transcriptData.get("endTime").toString()) 
+                    : 0;
+
+            if (transcriptText == null || transcriptText.isEmpty()) {
+                response.put("success", false);
+                response.put("error", "No transcript text provided");
+                return response;
+            }
+
+            // Find or create recording if recordingId provided
+            Recording recording = null;
+            if (recordingId != null) {
+                recording = recordingService.findById(recordingId).orElse(null);
+            }
+
+            // Create transcript entry
+            Transcript transcript = new Transcript();
+            if (recording != null) {
+                transcript.setRecording(recording);
+            }
+            transcript.setUser(user);
+            transcript.setSpeakerName(speakerName);
+            transcript.setContent(transcriptText);
+            transcript.setStartTimeSeconds(startTime);
+            transcript.setEndTimeSeconds(endTime);
+            transcript.setLanguage("en");
+
+            Transcript savedTranscript = transcriptService.saveTranscript(transcript);
+
+            log.info("Live transcript created for user {} in meeting {}: {}", 
+                    user.getDisplayName(), meetingCode, savedTranscript.getId());
+
+            response.put("success", true);
+            response.put("transcriptId", savedTranscript.getId());
+            response.put("userId", user.getId());
+            response.put("userName", user.getDisplayName());
+            response.put("speakerName", speakerName);
+            response.put("text", transcriptText);
+            response.put("startTime", startTime);
+            response.put("endTime", endTime);
+            response.put("timestamp", LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
+            response.put("event", "transcript_created");
+
+        } catch (Exception e) {
+            log.error("Error handling transcript: {}", e.getMessage(), e);
+            response.put("success", false);
+            response.put("error", "Failed to process transcript: " + e.getMessage());
         }
 
         return response;

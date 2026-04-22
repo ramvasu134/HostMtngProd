@@ -90,5 +90,9 @@ public class AuthController {
             return "register";
         }
     }
-}
 
+    @GetMapping("/terms-and-conditions")
+    public String termsAndConditions() {
+        return "terms-and-conditions";
+    }
+}

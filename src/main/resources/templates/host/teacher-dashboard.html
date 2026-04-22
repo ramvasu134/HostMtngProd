@@ -809,21 +809,110 @@
             flex: 1;
             background: var(--bg-primary);
             display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: flex-start;
+            flex-direction: row;
+            align-items: stretch;
+            justify-content: stretch;
             min-height: 300px;
-            overflow-y: auto;
+            overflow: hidden;
         }
 
         .participants-content {
             text-align: center;
-            width: 100%;
+            width: auto;
+            flex: 1;
             height: 100%;
             display: flex;
-            align-items: center;
-            justify-content: center;
+            flex-direction: column;
+            align-items: stretch;
+            justify-content: flex-start;
+            overflow: hidden;
         }
+
+        #teacherProfileSection {
+            width: 130px;
+            min-width: 130px;
+            border-right: 1px solid rgba(255,255,255,0.08);
+            background: rgba(15, 23, 42, 0.45);
+        }
+
+        .meeting-live-transcripts-panel {
+            width: 32%;
+            border-left: 1px solid var(--border-color);
+            background: var(--bg-secondary);
+            display: flex;
+            flex-direction: column;
+            min-width: 320px;
+        }
+
+        .mcp-title {
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.4px;
+            font-weight: 700;
+            color: #93c5fd;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 12px 8px;
+        }
+
+        .mcp-live-scroll {
+            flex: 1;
+            overflow-x: auto;
+            overflow-y: hidden;
+            padding: 8px 10px 12px;
+        }
+
+        .mcp-live-list {
+            display: flex;
+            gap: 10px;
+            min-height: 100px;
+        }
+
+        .mcp-empty {
+            color: var(--text-muted);
+            font-size: 12px;
+            text-align: center;
+            padding: 22px 10px;
+            width: 100%;
+        }
+
+        .mcp-card {
+            min-width: 260px;
+            max-width: 290px;
+            background: rgba(99, 102, 241, 0.1);
+            border-left: 3px solid #6366f1;
+            border-radius: 8px;
+            padding: 10px;
+        }
+
+        .mcp-speaker {
+            font-size: 11px;
+            font-weight: 700;
+            color: #818cf8;
+            margin-bottom: 6px;
+        }
+
+        .mcp-text {
+            font-size: 12px;
+            line-height: 1.5;
+            color: #d0d9e8;
+            margin-bottom: 8px;
+            word-break: break-word;
+        }
+
+        .mcp-ok-btn {
+            border: none;
+            border-radius: 6px;
+            padding: 6px 10px;
+            background: linear-gradient(135deg, #22c55e, #16a34a);
+            color: white;
+            font-size: 11px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .mcp-card.archived { display: none; }
 
         .no-participants {
             display: flex;
@@ -2132,9 +2221,26 @@
                     </div>
 
                     <!-- Students Content -->
-                    <div class="participants-content" id="participantsContent">
-                        <div class="no-participants" id="noParticipantsMsg" style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px;">
-                            <p style="color:#6e7681;font-size:14px;">No students in meeting yet</p>
+                    <div class="participants-content">
+                        <div class="dm-speaking-row">
+                            <div class="dm-speaking-title"><i class="fas fa-bell"></i> Speaking Alerts</div>
+                            <div class="dm-speaking-list" id="dashSpeakingAlerts">
+                                <div class="dm-speaking-empty" id="dashSpeakingEmpty">When students speak, blink alerts appear here...</div>
+                            </div>
+                        </div>
+                        <div id="participantsCards">
+                            <div class="no-participants" id="noParticipantsMsg" style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px;">
+                                <p style="color:#6e7681;font-size:14px;">No students in meeting yet</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="meeting-live-transcripts-panel">
+                        <div class="mcp-title"><i class="fas fa-microphone-lines"></i> Meeting Control Queue</div>
+                        <div class="mcp-live-scroll">
+                            <div class="mcp-live-list" id="dashLiveTranscriptList">
+                                <div class="mcp-empty" id="dashLiveTranscriptEmpty">Live transcripts will appear here...</div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -3369,6 +3475,14 @@
         let currentMeetingCode = null;
         let onlineCountTimer = null;
 
+        async function fetchJsonSafe(url, options) {
+            const response = await fetch(url, options);
+            const contentType = response.headers.get('content-type') || '';
+            const isJson = contentType.includes('application/json');
+            const body = isJson ? await response.json() : null;
+            return { response, body };
+        }
+
         function toggleMeeting() {
             const btn = document.getElementById('startMeetingBtn');
 
@@ -3377,9 +3491,18 @@
                 btn.disabled = true;
                 btn.innerHTML = '<span>Starting…</span>';
 
-                fetch('/api/host/quick-meeting/start', { method: 'POST' })
-                    .then(r => r.json())
-                    .then(data => {
+                fetchJsonSafe('/api/host/quick-meeting/start', { method: 'POST' })
+                    .then(({ response, body }) => {
+                        if (!response.ok) {
+                            if (body && body.message) throw new Error(body.message);
+                            if (response.status === 401) throw new Error('Please login again.');
+                            if (response.status === 403) throw new Error('Access denied for starting meeting.');
+                            throw new Error('Could not start meeting. Please try again.');
+                        }
+                        if (!body) {
+                            throw new Error('Unexpected server response');
+                        }
+                        const data = body;
                         if (data.success) {
                             currentMeetingId   = data.meetingId;
                             currentMeetingCode = data.meetingCode;
@@ -3412,7 +3535,11 @@
                             document.getElementById('meetingStatusInfo').innerHTML =
                                 '<span class="status-text">🟢 Live — Code: <strong>' + data.meetingCode + '</strong></span>';
                             // ── Start meeting IN the dashboard (no redirect) ──
-                            initDashboardMeeting(data.meetingCode);
+                            if (typeof initDashboardMeeting === 'function') {
+                                initDashboardMeeting(data.meetingCode);
+                            } else {
+                                throw new Error('Meeting module failed to load');
+                            }
                             switchTab('meeting-controls');
                         } else {
                             btn.disabled = false;
@@ -3420,10 +3547,10 @@
                             showToast('Failed: ' + (data.message || 'Unknown error'), 'error');
                         }
                     })
-                    .catch(() => {
+                    .catch((err) => {
                         btn.disabled = false;
                         btn.innerHTML = '<span>Start Meeting</span>';
-                        showToast('Network error. Please try again.', 'error');
+                        showToast((err && err.message) ? err.message : 'Network error. Please try again.', 'error');
                     });
 
             } else {
@@ -3433,13 +3560,13 @@
                 btn.disabled = true;
                 btn.innerHTML = '<span>Ending…</span>';
 
-                fetch('/api/host/quick-meeting/end', {
+                fetchJsonSafe('/api/host/quick-meeting/end', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ meetingId: currentMeetingId })
                 })
-                .then(r => r.json())
-                .then(() => {
+                .then(({ response }) => {
+                    if (response.redirected || response.status === 401 || response.status === 403) return;
                     resetMeetingUI();
                     showToast('Meeting ended.', 'success');
                 })
@@ -4382,14 +4509,123 @@ _Please login using the above credentials._`;
 
         /* ===== Dashboard Meeting — Participant Cards ===== */
         /* ===== Dashboard Meeting — Participant Cards Grid ===== */
-        #participantsContent {
+        .dm-speaking-row {
+            padding: 10px 14px 8px;
+            border-bottom: 1px solid rgba(255,255,255,0.08);
+            background: rgba(15, 23, 42, 0.5);
+        }
+
+        .dm-speaking-title {
+            color: #c7d2fe;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.4px;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin-bottom: 8px;
+        }
+
+        .dm-speaking-list {
+            display: flex;
+            gap: 8px;
+            min-height: 34px;
+            overflow-x: auto;
+            overflow-y: hidden;
+            align-items: center;
+            padding-bottom: 2px;
+        }
+
+        .dm-speaking-empty {
+            color: rgba(148, 163, 184, 0.9);
+            font-size: 12px;
+            white-space: nowrap;
+        }
+
+        .dm-speaking-chip {
+            display: inline-flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            width: 94px;
+            min-height: 90px;
+            border-radius: 12px;
+            padding: 8px 6px;
+            background: linear-gradient(145deg, #0e7490, #0891b2);
+            border: 1px solid rgba(6,182,212,0.45);
+            color: #ffffff;
+            box-shadow: 0 0 0 0 rgba(239,68,68,0.55);
+            animation: dmSpeakRowPulse 1.35s ease-out forwards;
+            flex-shrink: 0;
+        }
+
+        .dm-speaking-chip-avatar {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 13px;
+            font-weight: 800;
+            background: rgba(0,0,0,0.25);
+            border: 2px solid rgba(255,255,255,0.28);
+        }
+
+        .dm-speaking-chip-name {
             width: 100%;
-            padding: 16px;
+            text-align: center;
+            font-size: 11px;
+            font-weight: 700;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            padding: 0 2px;
+        }
+
+        .dm-speaking-chip-dots {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+        }
+
+        .dm-speaking-chip-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: rgba(255,255,255,0.32);
+        }
+
+        .dm-speaking-chip-dot.active {
+            background: #ef4444;
+            box-shadow: 0 0 6px rgba(239,68,68,0.95);
+        }
+
+        .dm-speaking-chip-dot.mid {
+            background: rgba(56,189,248,0.65);
+        }
+
+        @keyframes dmSpeakRowPulse {
+            0% { transform: translateY(6px) scale(0.9); opacity: 0; box-shadow: 0 0 0 0 rgba(239,68,68,0.65); }
+            20% { transform: translateY(0) scale(1); opacity: 1; box-shadow: 0 0 0 10px rgba(239,68,68,0.2); }
+            44% { opacity: 0.2; }
+            62% { opacity: 1; }
+            100% { transform: scale(0.98); opacity: 0; box-shadow: 0 0 0 18px rgba(239,68,68,0); }
+        }
+
+        #participantsCards {
+            width: 100%;
+            padding: 18px;
             display: flex;
             flex-wrap: wrap;
-            gap: 12px;
+            gap: 14px;
             align-content: flex-start;
             justify-content: flex-start;
+            overflow-y: auto;
+            flex: 1;
         }
 
         .dm-pcard {
@@ -4397,9 +4633,9 @@ _Please login using the above credentials._`;
             background: linear-gradient(145deg, #0e7490, #0891b2);
             border: 1px solid rgba(6,182,212,0.35);
             border-radius: 12px;
-            padding: 12px 8px 10px;
-            width: 100px;
-            min-height: 100px;
+            padding: 12px 10px 10px;
+            width: 108px;
+            min-height: 104px;
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -4456,6 +4692,37 @@ _Please login using the above credentials._`;
 
         .dm-dot.speaking { background: #22c55e; box-shadow: 0 0 5px #22c55e; }
         .dm-dot.muted    { background: rgba(239,68,68,0.6); }
+
+        .dm-speak-blip {
+            position: absolute;
+            top: 4px;
+            right: 4px;
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            background: radial-gradient(circle, #fef08a 0%, #f59e0b 66%, #ea580c 100%);
+            border: 2px solid rgba(255,255,255,0.9);
+            box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.75);
+            pointer-events: none;
+            animation: dmSpeakPulse 1.6s ease-out forwards;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #ffffff;
+            font-size: 12px;
+            font-weight: 700;
+            z-index: 4;
+        }
+
+        @keyframes dmSpeakPulse {
+            0% { transform: scale(0.55); opacity: 0; box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.9); }
+            14% { transform: scale(1.05); opacity: 1; box-shadow: 0 0 0 10px rgba(245, 158, 11, 0.35); }
+            26% { opacity: 0.15; }
+            38% { opacity: 1; }
+            52% { opacity: 0.15; }
+            64% { opacity: 1; box-shadow: 0 0 0 18px rgba(245, 158, 11, 0.14); }
+            100% { transform: scale(0.9); opacity: 0; box-shadow: 0 0 0 26px rgba(245, 158, 11, 0); }
+        }
 
         /* ===== Dashboard Meeting — Chat Messages ===== */
         .dm-msg {

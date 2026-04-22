@@ -773,6 +773,14 @@
                                         <i th:class="${teacher.active ? 'fas fa-ban' : 'fas fa-check'}"></i>
                                     </button>
                                 </form>
+                                <form th:action="@{/admin/teachers/{id}/delete(id=${teacher.id})}" method="post" style="display:inline;">
+                                    <button type="submit"
+                                            class="action-btn danger"
+                                            title="Delete"
+                                            onclick="return confirm('Delete this teacher and all associated data?')">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                </form>
                             </div>
                         </td>
                     </tr>

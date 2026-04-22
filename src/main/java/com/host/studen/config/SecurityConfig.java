@@ -52,11 +52,11 @@ public class SecurityConfig {
             .csrf(csrf -> csrf
                 // CSRF protection disabled for API and WebSocket endpoints
                 // WebSocket uses its own STOMP-level authentication
-                .ignoringRequestMatchers("/api/**", "/ws/**")
+                .ignoringRequestMatchers("/api/**", "/ws/**", "/logout")
             )
             .authorizeHttpRequests(auth -> auth
                 // Public endpoints
-                .requestMatchers("/", "/login", "/admin/login", "/register", "/css/**", "/js/**",
+                .requestMatchers("/", "/login", "/admin/login", "/register", "/terms-and-conditions", "/css/**", "/js/**",
                         "/images/**", "/favicon.ico", "/error").permitAll()
                 // H2 console - only in dev profile
                 .requestMatchers("/h2-console/**").permitAll()

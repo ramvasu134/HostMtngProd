@@ -58,7 +58,13 @@ public class HostApiController {
                     r.put("playUrl", "/api/meeting/recording/" + rec.getId() + "/play");
                     r.put("downloadUrl", "/api/meeting/recording/" + rec.getId() + "/download");
                     List<Transcript> trs = transcriptService.findByRecording(rec);
-                    r.put("transcript", trs.isEmpty() ? null : trs.get(0).getContent());
+                    String combinedTranscript = trs.stream()
+                            .map(Transcript::getContent)
+                            .filter(Objects::nonNull)
+                            .map(String::trim)
+                            .filter(s -> !s.isEmpty())
+                            .collect(Collectors.joining(" "));
+                    r.put("transcript", combinedTranscript.isEmpty() ? null : combinedTranscript);
                     r.put("transcriptId", trs.isEmpty() ? null : trs.get(0).getId());
                     recList.add(r);
                 }

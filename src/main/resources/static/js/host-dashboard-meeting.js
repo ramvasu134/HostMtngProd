@@ -31,6 +31,10 @@ let _dm_micOn       = true;
 let _dm_spkMuted    = false;
 let _dm_wsTimer     = null;
 let _dm_wsConnecting = false;
+let _dm_transcriptSeq = 0;
+let _dm_liveTranscriptByCard = {};
+let _dm_voiceAnalyzers = {};
+let _dm_lastSpeechAt = {};
 
 // ── Public: start meeting ────────────────────────────────────────────────────
 
@@ -77,6 +81,9 @@ function cleanupDashboardMeeting() {
     Object.values(_dm_peers).forEach(pc => pc.close());
     _dm_peers   = {};
     _dm_pending = {};
+    Object.keys(_dm_voiceAnalyzers).forEach(_dm_stopVoiceAnalyzer);
+    _dm_voiceAnalyzers = {};
+    _dm_lastSpeechAt = {};
 
     if (_dm_local) { _dm_local.getTracks().forEach(t => t.stop()); _dm_local = null; }
     _dm_code = '';
@@ -140,6 +147,7 @@ function _dm_connectWS() {
         _dm_stomp.subscribe('/topic/chat/'        + _dm_code, m => _dm_onChat(JSON.parse(m.body)));
         _dm_stomp.subscribe('/topic/control/'     + _dm_code, m => { /* future */ });
         _dm_stomp.subscribe('/topic/recording/'   + _dm_code, m => _dm_onRecording(JSON.parse(m.body)));
+        _dm_stomp.subscribe('/topic/transcript/'  + _dm_code, m => _dm_onTranscript(JSON.parse(m.body)));
 
         // Announce host presence so any waiting students will create an offer
         _dm_sendParticipant('join');
@@ -213,6 +221,7 @@ function _dm_playAudio(peerId, stream) {
         document.body.appendChild(audio);
     }
     audio.srcObject = stream;
+    _dm_startVoiceAnalyzer(peerId, stream);
 }
 
 function _dm_onSignal(data) {
@@ -298,6 +307,8 @@ function _dm_onParticipant(data) {
         _dm_sendSignal({ type: 'request-offer', targetId: String(data.userId) });
 
     } else if (data.event === 'leave') {
+        _dm_stopVoiceAnalyzer(String(data.userId));
+        delete _dm_lastSpeechAt[String(data.userId)];
         _dm_removeCard(data.userId);
         _dm_updateCount();
         const pc = _dm_peers[String(data.userId)];
@@ -362,7 +373,7 @@ function _dm_updateMicBtn(enabled) {
 }
 
 function _dm_addCard(userId, userName) {
-    const area = document.getElementById('participantsContent');
+    const area = document.getElementById('participantsCards') || document.getElementById('participantsContent');
     if (!area) return;
     // Hide placeholder
     const placeholder = area.querySelector('.no-participants');
@@ -387,7 +398,7 @@ function _dm_addCard(userId, userName) {
 function _dm_removeCard(userId) {
     const card = document.querySelector('[data-pid="' + userId + '"]');
     if (card) card.remove();
-    const area = document.getElementById('participantsContent');
+    const area = document.getElementById('participantsCards') || document.getElementById('participantsContent');
     if (!area) return;
     const remaining = area.querySelectorAll('[data-pid]');
     if (remaining.length === 0) {
@@ -403,28 +414,126 @@ function _dm_updateCardMic(userId, micOn) {
     if (dot) {
         dot.className = 'dm-dot ' + (micOn ? 'speaking' : 'muted');
     }
-    // Also animate card border when speaking
-    const card = document.querySelector('[data-pid="' + userId + '"]');
-    if (card) {
-        card.style.borderColor = micOn ? 'rgba(34,197,94,0.6)' : 'rgba(6,182,212,0.35)';
-        card.style.boxShadow   = micOn ? '0 0 14px rgba(34,197,94,0.4)' : '';
+    if (micOn) _dm_flashSpeakAlert(userId);
+}
+
+function _dm_flashSpeakAlert(userId, userName) {
+    const alerts = document.getElementById('dashSpeakingAlerts');
+    const empty = document.getElementById('dashSpeakingEmpty');
+    if (!alerts) return;
+    const pid = String(userId || '');
+    const label = (userName || _dm_getParticipantName(pid) || 'Student').trim();
+    if (empty) empty.style.display = 'none';
+    const prev = pid ? alerts.querySelector('.dm-speaking-chip[data-alert-pid="' + pid + '"]') : null;
+    if (prev) prev.remove();
+    const chip = document.createElement('div');
+    chip.className = 'dm-speaking-chip';
+    if (pid) chip.dataset.alertPid = pid;
+    chip.innerHTML =
+        '<div class="dm-speaking-chip-avatar">' + _dmEsc(_dmInitials(label)) + '</div>' +
+        '<div class="dm-speaking-chip-name">' + _dmEsc(label) + '</div>' +
+        '<div class="dm-speaking-chip-dots">' +
+            '<span class="dm-speaking-chip-dot active"></span>' +
+            '<span class="dm-speaking-chip-dot mid"></span>' +
+            '<span class="dm-speaking-chip-dot"></span>' +
+        '</div>';
+    alerts.appendChild(chip);
+    setTimeout(() => {
+        if (chip && chip.parentElement) chip.remove();
+        if (empty && !alerts.querySelector('.dm-speaking-chip')) empty.style.display = '';
+    }, 1700);
+}
+
+function _dm_flashSpeakBlipBySpeaker(data) {
+    if (!data) return;
+    const speakerId = data.userId || data.senderId;
+    if (speakerId) {
+        _dm_flashSpeakAlert(speakerId, data.speakerName || data.userName);
+        return;
+    }
+    const speakerName = (data.speakerName || data.userName || '').trim().toLowerCase();
+    if (!speakerName) return;
+    const cards = Array.from(document.querySelectorAll('#participantsCards [data-pid], #participantsContent [data-pid]'));
+    const matched = cards.find(c => {
+        const nameEl = c.querySelector('.dm-pname');
+        return nameEl && nameEl.textContent && nameEl.textContent.trim().toLowerCase() === speakerName;
+    });
+    if (matched) {
+        _dm_flashSpeakAlert(matched.dataset.pid, matched.querySelector('.dm-pname')?.textContent || data.speakerName || data.userName);
+    } else {
+        _dm_flashSpeakAlert('', data.speakerName || data.userName || 'Student');
     }
 }
 
+function _dm_startVoiceAnalyzer(peerId, stream) {
+    const key = String(peerId);
+    _dm_stopVoiceAnalyzer(key);
+    if (!stream) return;
+    try {
+        const Ctx = window.AudioContext || window.webkitAudioContext;
+        if (!Ctx) return;
+        const ctx = new Ctx();
+        const src = ctx.createMediaStreamSource(stream);
+        const analyser = ctx.createAnalyser();
+        analyser.fftSize = 256;
+        analyser.smoothingTimeConstant = 0.65;
+        src.connect(analyser);
+        const buf = new Uint8Array(analyser.frequencyBinCount);
+        const run = () => {
+            if (!_dm_voiceAnalyzers[key]) return;
+            analyser.getByteFrequencyData(buf);
+            const avg = buf.reduce((a, b) => a + b, 0) / buf.length;
+            const now = Date.now();
+            if (avg > 12 && (!_dm_lastSpeechAt[key] || now - _dm_lastSpeechAt[key] > 750)) {
+                _dm_lastSpeechAt[key] = now;
+                _dm_flashSpeakAlert(key);
+            }
+            _dm_voiceAnalyzers[key].raf = requestAnimationFrame(run);
+        };
+        _dm_voiceAnalyzers[key] = { ctx, src, analyser, raf: requestAnimationFrame(run) };
+    } catch (e) {
+        // Ignore audio context errors on unsupported browsers/devices.
+    }
+}
+
+function _dm_stopVoiceAnalyzer(peerId) {
+    const key = String(peerId);
+    const entry = _dm_voiceAnalyzers[key];
+    if (!entry) return;
+    try {
+        if (entry.raf) cancelAnimationFrame(entry.raf);
+        if (entry.src) entry.src.disconnect();
+        if (entry.analyser) entry.analyser.disconnect();
+        if (entry.ctx && typeof entry.ctx.close === 'function') entry.ctx.close();
+    } catch (e) {}
+    delete _dm_voiceAnalyzers[key];
+}
+
 function _dm_updateCount() {
-    const count = document.querySelectorAll('#participantsContent [data-pid]').length;
+    const count = document.querySelectorAll('#participantsCards [data-pid], #participantsContent [data-pid]').length;
     const el = document.getElementById('meetingOnline');
     if (el) el.textContent = count;
 }
 
 function _dm_clearParticipants() {
-    const area = document.getElementById('participantsContent');
+    const area = document.getElementById('participantsCards') || document.getElementById('participantsContent');
     if (!area) return;
     area.querySelectorAll('[data-pid]').forEach(el => el.remove());
     const placeholder = area.querySelector('.no-participants');
     if (placeholder) placeholder.style.display = '';
+    const alerts = document.getElementById('dashSpeakingAlerts');
+    const empty = document.getElementById('dashSpeakingEmpty');
+    if (alerts) alerts.querySelectorAll('.dm-speaking-chip').forEach(el => el.remove());
+    if (empty) empty.style.display = '';
     const cnt = document.getElementById('meetingOnline');
     if (cnt) cnt.textContent = '0';
+}
+
+function _dm_getParticipantName(userId) {
+    const card = document.querySelector('[data-pid="' + String(userId) + '"]');
+    if (!card) return '';
+    const nameEl = card.querySelector('.dm-pname');
+    return nameEl ? nameEl.textContent : '';
 }
 
 function _dm_setupViz(stream) {
@@ -487,6 +596,71 @@ function _dm_onRecording(data) {
     const name = data.userName || 'A student';
     const dur  = data.duration ? ' (' + data.duration + 's)' : '';
     _dmShowToast('🎙️ New Clip', name + ' saved an audio clip' + dur, '#6366f1');
+}
+
+function _dm_onTranscript(data) {
+    if (!data || !data.success || !data.text) return;
+    _dm_flashSpeakBlipBySpeaker(data);
+    const list = document.getElementById('dashLiveTranscriptList');
+    const empty = document.getElementById('dashLiveTranscriptEmpty');
+    if (!list) return;
+    if (empty) empty.style.display = 'none';
+
+    const cardId = 'dash-tx-' + (++_dm_transcriptSeq);
+    const card = document.createElement('div');
+    card.id = cardId;
+    card.className = 'mcp-card';
+    card.innerHTML =
+        '<div class="mcp-speaker"><i class="fas fa-microphone"></i> ' + _dmEsc(data.speakerName || data.userName || 'Unknown') + '</div>' +
+        '<div class="mcp-text">' + _dmEsc(data.text) + '</div>' +
+        '<button class="mcp-ok-btn" onclick="_dm_archiveTranscript(\'' + cardId + '\')"><i class="fas fa-check"></i> Okay</button>';
+    list.appendChild(card);
+    _dm_liveTranscriptByCard[cardId] = {
+        id: data.transcriptId || Date.now(),
+        content: data.text,
+        speakerName: data.speakerName || data.userName || 'Unknown',
+        studentName: data.userName || data.speakerName || 'Unknown',
+        recordingId: data.recordingId || null,
+        startTime: data.startTime || 0,
+        endTime: data.endTime || 0,
+        createdAt: data.timestamp || new Date().toISOString()
+    };
+}
+
+function _dm_archiveTranscript(cardId) {
+    const card = document.getElementById(cardId);
+    const liveList = document.getElementById('dashLiveTranscriptList');
+    const liveEmpty = document.getElementById('dashLiveTranscriptEmpty');
+    if (!card || !liveList) return;
+
+    card.remove();
+
+    if (!liveList.querySelector('.mcp-card') && liveEmpty) {
+        liveEmpty.style.display = '';
+    }
+
+    const transcriptItem = _dm_liveTranscriptByCard[cardId];
+    if (transcriptItem) {
+        if (Array.isArray(window.allTranscripts)) {
+            const exists = window.allTranscripts.some(t => String(t.id) === String(transcriptItem.id));
+            if (!exists) {
+                window.allTranscripts.unshift(transcriptItem);
+            }
+            if (typeof renderTranscripts === 'function') {
+                renderTranscripts(window.allTranscripts);
+            }
+        }
+        delete _dm_liveTranscriptByCard[cardId];
+    }
+
+    // Refresh transcript and recordings tabs so transcript is visible immediately.
+    if (typeof loadTranscripts === 'function') {
+        loadTranscripts();
+    }
+    if (typeof refreshRecordingsAjax === 'function') {
+        refreshRecordingsAjax();
+    }
+    _dmShowToast('Moved', 'Transcript moved to Transcripts tab', '#22c55e');
 }
 
 function _dmShowToast(title, msg, color) {

@@ -22,10 +22,14 @@ let peerConnections = {};   // studentId -> RTCPeerConnection
 let pendingCandidates = {}; // peerId → queued ICE candidates before remoteDesc is set
 let isMicEnabled   = true;
 let isRecording    = false;
-let currentTab     = 'participants'; // 'participants' | 'chat' | 'recordings'
+let currentTab     = 'participants'; // 'participants' | 'chat' | 'recordings' | 'transcripts'
 let chatUnread     = 0;
 let recordingUnread = 0;
 let meetingStartTime = Date.now();
+let hostSpeechRecognition = null;
+let hostTranscriptText = '';
+let hostInterimText = '';
+let hostTranscriptStartMs = 0;
 
 // ===== Boot =====
 document.addEventListener('DOMContentLoaded', function () {
@@ -108,6 +112,10 @@ function connectWebSocket() {
                 handleRecordingEvent(JSON.parse(m.body));
             });
         }
+
+        // ── Live transcripts updates ──
+        TranscriptManager.init(stompClient);
+        TranscriptManager.subscribe(MEETING_CODE);
 
         // Announce host presence — students already in the room will
         // receive this and call createOffer(hostId) automatically
@@ -375,6 +383,8 @@ function toggleMic() {
     localStream.getAudioTracks().forEach(t => { t.enabled = isMicEnabled; });
     updateMicUI(isMicEnabled);
     sendParticipantEvent('mic-toggle');
+    if (isMicEnabled) startHostTranscription();
+    else stopHostTranscriptionAndSend();
 }
 
 function updateMicUI(enabled) {
@@ -420,6 +430,7 @@ function setupAudioVisualization(stream) {
         requestAnimationFrame(visualize);
     }
     visualize();
+    if (isMicEnabled) startHostTranscription();
 }
 
 // ===== Recording (UI only — host's Record button marks session intent) =====
@@ -446,18 +457,22 @@ function switchTab(tab) {
     const pContent = document.getElementById('contentParticipants');
     const cContent = document.getElementById('contentChat');
     const rContent = document.getElementById('contentRecordings');
+    const tContent = document.getElementById('contentTranscripts');
     const pTab     = document.getElementById('tabParticipants');
     const cTab     = document.getElementById('tabChat');
     const rTab     = document.getElementById('tabRecordings');
+    const tTab     = document.getElementById('tabTranscripts');
     const chatBtn  = document.getElementById('btnChat');
 
     if (pContent) pContent.style.display = tab === 'participants' ? 'flex' : 'none';
     if (cContent) cContent.style.display = tab === 'chat'         ? 'flex' : 'none';
     if (rContent) rContent.style.display = tab === 'recordings'   ? 'flex' : 'none';
+    if (tContent) tContent.style.display = tab === 'transcripts'  ? 'flex' : 'none';
 
     if (pTab) pTab.classList.toggle('panel-tab-active', tab === 'participants');
     if (cTab) cTab.classList.toggle('panel-tab-active', tab === 'chat');
     if (rTab) rTab.classList.toggle('panel-tab-active', tab === 'recordings');
+    if (tTab) tTab.classList.toggle('panel-tab-active', tab === 'transcripts');
 
     if (chatBtn) chatBtn.classList.toggle('active', tab === 'chat');
 
@@ -697,6 +712,59 @@ function escapeHtml(text) {
     return d.innerHTML;
 }
 
+function initHostSpeechRecognition() {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) return;
+    hostSpeechRecognition = new SpeechRecognition();
+    hostSpeechRecognition.continuous = true;
+    hostSpeechRecognition.interimResults = true;
+    hostSpeechRecognition.lang = 'en-US';
+    hostSpeechRecognition.maxAlternatives = 1;
+    hostSpeechRecognition.onresult = (event) => {
+        hostInterimText = '';
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+            if (event.results[i].isFinal) {
+                hostTranscriptText += event.results[i][0].transcript + ' ';
+            } else {
+                hostInterimText += event.results[i][0].transcript;
+            }
+        }
+    };
+    hostSpeechRecognition.onend = () => {
+        if (isMicEnabled && hostSpeechRecognition) {
+            try { hostSpeechRecognition.start(); } catch (e) {}
+        }
+    };
+}
+
+function startHostTranscription() {
+    if (!hostSpeechRecognition) initHostSpeechRecognition();
+    if (!hostSpeechRecognition) return;
+    hostTranscriptText = '';
+    hostInterimText = '';
+    hostTranscriptStartMs = Date.now();
+    try { hostSpeechRecognition.start(); } catch (e) {}
+}
+
+function stopHostTranscriptionAndSend() {
+    if (hostSpeechRecognition) {
+        try { hostSpeechRecognition.stop(); } catch (e) {}
+    }
+    setTimeout(() => {
+        const text = (hostTranscriptText + hostInterimText).trim();
+        const durationSecs = Math.max(1, Math.round((Date.now() - hostTranscriptStartMs) / 1000));
+        hostTranscriptText = '';
+        hostInterimText = '';
+        if (!text || !stompClient || !stompClient.connected) return;
+        stompClient.send('/app/transcript/' + MEETING_CODE, {}, JSON.stringify({
+            text: text,
+            speakerName: USER_NAME,
+            startTime: 0,
+            endTime: durationSecs
+        }));
+    }, 400);
+}
+
 // ===== Keyboard shortcuts =====
 document.addEventListener('keydown', function (e) {
     if (e.key === 'm' || e.key === 'M') {
@@ -712,6 +780,7 @@ document.addEventListener('keydown', function (e) {
 window.addEventListener('beforeunload', function () {
     clearTimeout(_wsReconnectTimer);
     if (stompClient && stompClient.connected) {
+        stopHostTranscriptionAndSend();
         sendParticipantEvent('leave');
         stompClient.send('/app/control/' + MEETING_CODE, {}, JSON.stringify({ event: 'end-meeting' }));
         stompClient.disconnect();

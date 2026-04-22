@@ -545,6 +545,15 @@ function uploadRecording(blob, duration, transcript) {
         })
         .then(function(data) {
             if (!data.success) return reject(new Error(data.error || 'Upload failed'));
+            if (transcript && transcript.trim() && stompClient && stompClient.connected) {
+                stompClient.send('/app/transcript/' + MEETING_CODE, {}, JSON.stringify({
+                    text: transcript.trim(),
+                    speakerName: USER_NAME,
+                    recordingId: data.recordingId,
+                    startTime: 0,
+                    endTime: duration
+                }));
+            }
             // Refresh recordings list if open
             const modal = document.getElementById('srRecordingsModal');
             if (modal && modal.classList.contains('open')) srLoadRecordings();

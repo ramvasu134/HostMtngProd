@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Terms & Conditions - Host Mtng</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background: linear-gradient(135deg, #0d1117 0%, #161b22 50%, #0d1117 100%);
+            color: #f0f6fc;
+            line-height: 1.6;
+        }
+
+        .terms-container {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 40px 20px;
+        }
+
+        .terms-header {
+            text-align: center;
+            margin-bottom: 50px;
+            padding: 30px;
+            background: rgba(22, 27, 34, 0.95);
+            border-radius: 16px;
+            border: 1px solid rgba(99, 102, 241, 0.2);
+        }
+
+        .terms-header h1 {
+            font-size: 36px;
+            font-weight: 800;
+            margin-bottom: 10px;
+            background: linear-gradient(135deg, #FFD580, #D4AF37);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .terms-header p {
+            color: #8b949e;
+            font-size: 16px;
+        }
+
+        .terms-content {
+            background: rgba(22, 27, 34, 0.95);
+            border-radius: 16px;
+            border: 1px solid rgba(99, 102, 241, 0.2);
+            padding: 40px;
+            margin-bottom: 30px;
+        }
+
+        .section {
+            margin-bottom: 40px;
+        }
+
+        .section h2 {
+            font-size: 22px;
+            font-weight: 700;
+            color: #FFB84D;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid rgba(255, 184, 77, 0.3);
+        }
+
+        .section h3 {
+            font-size: 16px;
+            font-weight: 600;
+            color: #c084fc;
+            margin-top: 20px;
+            margin-bottom: 10px;
+        }
+
+        .section p {
+            color: #d0d9e8;
+            margin-bottom: 15px;
+            line-height: 1.8;
+        }
+
+        .section ul {
+            margin: 15px 0 15px 30px;
+            color: #d0d9e8;
+        }
+
+        .section li {
+            margin-bottom: 10px;
+            line-height: 1.8;
+        }
+
+        .section strong {
+            color: #FFD580;
+        }
+
+        .role-section {
+            background: rgba(99, 102, 241, 0.08);
+            border-left: 4px solid #6366f1;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+        }
+
+        .role-section h4 {
+            color: #818cf8;
+            margin-bottom: 10px;
+            font-size: 15px;
+        }
+
+        .footer-actions {
+            display: flex;
+            gap: 15px;
+            margin-top: 40px;
+            justify-content: center;
+        }
+
+        .btn {
+            padding: 14px 32px;
+            border: none;
+            border-radius: 10px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #6366f1, #8b5cf6);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(99, 102, 241, 0.5);
+        }
+
+        .btn-secondary {
+            background: rgba(99, 102, 241, 0.15);
+            color: #818cf8;
+            border: 1px solid rgba(99, 102, 241, 0.3);
+        }
+
+        .btn-secondary:hover {
+            background: rgba(99, 102, 241, 0.25);
+            border-color: rgba(99, 102, 241, 0.5);
+        }
+
+        .back-link {
+            color: #818cf8;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 20px;
+            transition: color 0.3s ease;
+        }
+
+        .back-link:hover {
+            color: #c084fc;
+        }
+
+        .highlight {
+            background: rgba(255, 184, 77, 0.1);
+            padding: 3px 6px;
+            border-radius: 4px;
+            color: #FFD580;
+        }
+
+        .version-info {
+            text-align: center;
+            color: #6e7681;
+            font-size: 12px;
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid rgba(99, 102, 241, 0.1);
+        }
+
+        @media (max-width: 768px) {
+            .terms-container {
+                padding: 20px 15px;
+            }
+
+            .terms-content {
+                padding: 25px;
+            }
+
+            .terms-header h1 {
+                font-size: 28px;
+            }
+
+            .footer-actions {
+                flex-direction: column;
+            }
+
+            .btn {
+                width: 100%;
+                justify-content: center;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="terms-container">
+        <div class="terms-header">
+            <h1><i class="fas fa-video"></i> Host<span style="color: #FFB84D;">Mtng</span></h1>
+            <p>Terms & Conditions - Last Updated: April 2026</p>
+        </div>
+
+        <div class="terms-content">
+            <!-- 1. Introduction -->
+            <div class="section">
+                <h2><i class="fas fa-handshake"></i> 1. Introduction</h2>
+                <p>Welcome to <span class="highlight">HostMtng</span>, a real-time video meeting platform designed for educational institutions. These Terms & Conditions govern your access to and use of our service.</p>
+                <p>By accessing or using HostMtng, you agree to comply with these terms. If you do not agree, please refrain from using the platform.</p>
+            </div>
+
+            <!-- 2. Service Overview -->
+            <div class="section">
+                <h2><i class="fas fa-info-circle"></i> 2. Service Overview</h2>
+                <p>HostMtng provides:</p>
+                <ul>
+                    <li>Real-time video conferencing capabilities</li>
+                    <li>Audio/video recording and transcript generation</li>
+                    <li>Instant messaging and chat features</li>
+                    <li>Screen sharing functionality</li>
+                    <li>Role-based meeting management (Hosts/Students/Admin)</li>
+                </ul>
+            </div>
+
+            <!-- 3. User Roles & Responsibilities -->
+            <div class="section">
+                <h2><i class="fas fa-user-shield"></i> 3. User Roles & Responsibilities</h2>
+
+                <div class="role-section">
+                    <h4><i class="fas fa-chalkboard-user"></i> TEACHER/HOST RESPONSIBILITIES</h4>
+                    <ul>
+                        <li>Obtain proper consent before recording meetings</li>
+                        <li>Manage meeting participants responsibly</li>
+                        <li>Ensure compliance with institutional policies</li>
+                        <li>Monitor and moderate chat appropriately</li>
+                        <li>Maintain confidentiality of student information</li>
+                        <li>Use recordings only for educational purposes</li>
+                    </ul>
+                </div>
+
+                <div class="role-section">
+                    <h4><i class="fas fa-user-graduate"></i> STUDENT RESPONSIBILITIES</h4>
+                    <ul>
+                        <li>Maintain professional behavior during meetings</li>
+                        <li>Adhere to institutional code of conduct</li>
+                        <li>Respect peer privacy and confidentiality</li>
+                        <li>Follow teacher's instructions and guidelines</li>
+                        <li>Use platform only for authorized educational activities</li>
+                        <li>Report technical issues promptly</li>
+                    </ul>
+                </div>
+
+                <div class="role-section">
+                    <h4><i class="fas fa-lock-open"></i> ADMINISTRATOR RESPONSIBILITIES</h4>
+                    <ul>
+                        <li>Maintain platform security and integrity</li>
+                        <li>Monitor user activities for compliance</li>
+                        <li>Manage teacher and student accounts</li>
+                        <li>Ensure data protection and privacy</li>
+                        <li>Handle abuse reports and enforce policies</li>
+                        <li>Maintain system uptime and performance</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- 4. Recording & Transcripts -->
+            <div class="section">
+                <h2><i class="fas fa-microphone"></i> 4. Recording & Transcripts</h2>
+                <h3>Recording Consent</h3>
+                <p>Teachers must obtain explicit consent before recording any meeting. Recording is disabled by default and must be explicitly enabled for each session.</p>
+
+                <h3>Recording Usage</h3>
+                <ul>
+                    <li>Recordings are stored securely on our servers</li>
+                    <li>Only authorized users can access recordings</li>
+                    <li>Teachers may download and archive recordings locally</li>
+                    <li>Transcripts are auto-generated from audio content</li>
+                    <li>Recordings must not be shared without consent</li>
+                </ul>
+
+                <h3>Data Retention</h3>
+                <p>Recording data is retained according to institutional policy. Administrators may set automatic cleanup schedules. Users can manually delete recordings at any time.</p>
+            </div>
+
+            <!-- 5. Privacy & Data Protection -->
+            <div class="section">
+                <h2><i class="fas fa-shield-alt"></i> 5. Privacy & Data Protection</h2>
+                <ul>
+                    <li>Personal data is processed according to privacy laws</li>
+                    <li>Audio/video content is encrypted in transit and at rest</li>
+                    <li>Chat messages are logged for security purposes</li>
+                    <li>Data is not shared with third parties without consent</li>
+                    <li>Users have rights to access and delete their data</li>
+                    <li>Technical logs are retained for 90 days</li>
+                </ul>
+            </div>
+
+            <!-- 6. Code of Conduct -->
+            <div class="section">
+                <h2><i class="fas fa-gavel"></i> 6. Code of Conduct</h2>
+                <p>Users agree to:</p>
+                <ul>
+                    <li>Treat all participants with respect</li>
+                    <li>Not engage in harassment, bullying, or discrimination</li>
+                    <li>Not share offensive or inappropriate content</li>
+                    <li>Not impersonate other users</li>
+                    <li>Not attempt to disrupt or sabotage meetings</li>
+                    <li>Not violate copyright or intellectual property rights</li>
+                    <li>Not use the platform for unauthorized commercial purposes</li>
+                </ul>
+            </div>
+
+            <!-- 7. Acceptable Use Policy -->
+            <div class="section">
+                <h2><i class="fas fa-list-check"></i> 7. Acceptable Use Policy</h2>
+                <p>Prohibited Activities:</p>
+                <ul>
+                    <li>Uploading viruses, malware, or harmful code</li>
+                    <li>Attempting unauthorized access to system resources</li>
+                    <li>Reverse engineering or decompiling the platform</li>
+                    <li>Using bots or automated tools without authorization</li>
+                    <li>DDoS attacks or denial of service attempts</li>
+                    <li>Excessive bandwidth consumption</li>
+                    <li>Selling or redistributing platform access</li>
+                </ul>
+            </div>
+
+            <!-- 8. Security -->
+            <div class="section">
+                <h2><i class="fas fa-lock"></i> 8. Security</h2>
+                <h3>Account Security</h3>
+                <ul>
+                    <li>Users are responsible for maintaining password confidentiality</li>
+                    <li>Multi-factor authentication is recommended</li>
+                    <li>Unauthorized account access must be reported immediately</li>
+                    <li>Users should not share credentials</li>
+                </ul>
+
+                <h3>Reporting Vulnerabilities</h3>
+                <p>If you discover a security vulnerability, please report it to the administrator immediately. Do not publicly disclose security flaws.</p>
+            </div>
+
+            <!-- 9. Limitations of Liability -->
+            <div class="section">
+                <h2><i class="fas fa-exclamation-triangle"></i> 9. Limitations of Liability</h2>
+                <ul>
+                    <li>Platform is provided "as is" without warranties</li>
+                    <li>We are not liable for data loss or corruption</li>
+                    <li>Internet connectivity issues are user's responsibility</li>
+                    <li>Third-party software issues are beyond our control</li>
+                    <li>We reserve the right to modify or discontinue services</li>
+                    <li>Liability is limited to direct damages only</li>
+                </ul>
+            </div>
+
+            <!-- 10. Modifications to Terms -->
+            <div class="section">
+                <h2><i class="fas fa-refresh"></i> 10. Modifications to Terms</h2>
+                <p>We reserve the right to modify these terms at any time. Changes will be effective immediately upon posting. Continued use of the platform constitutes acceptance of modified terms.</p>
+                <p>Users will be notified of significant changes via email or login notification.</p>
+            </div>
+
+            <!-- 11. Termination -->
+            <div class="section">
+                <h2><i class="fas fa-ban"></i> 11. Termination</h2>
+                <p>We may terminate or suspend accounts for:</p>
+                <ul>
+                    <li>Violation of these terms</li>
+                    <li>Illegal activities</li>
+                    <li>Harassment or abuse</li>
+                    <li>Repeated policy violations</li>
+                    <li>Non-payment of fees (if applicable)</li>
+                </ul>
+                <p>Users may request account deletion at any time through admin settings.</p>
+            </div>
+
+            <!-- 12. Contact & Support -->
+            <div class="section">
+                <h2><i class="fas fa-envelope"></i> 12. Contact & Support</h2>
+                <p>For questions or concerns about these terms:</p>
+                <ul>
+                    <li>Contact your institution's administrator</li>
+                    <li>Submit support tickets through the platform</li>
+                    <li>Report abuse or violations to admin panel</li>
+                    <li>Request data deletion through account settings</li>
+                </ul>
+            </div>
+
+            <!-- Footer -->
+            <div class="version-info">
+                <p><strong>Version 1.0</strong> | Last Updated: April 22, 2026</p>
+                <p>© 2026 HostMtng. All rights reserved. | Designed for Educational Institutions</p>
+            </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="footer-actions">
+            <a href="/login" class="btn btn-primary">
+                <i class="fas fa-arrow-left"></i> Back to Login
+            </a>
+            <button type="button" class="btn btn-secondary" onclick="window.print()">
+                <i class="fas fa-print"></i> Print Terms
+            </button>
+        </div>
+
+        <a href="/login" class="back-link">
+            <i class="fas fa-arrow-left"></i> Return to Login
+        </a>
+    </div>
+
+    <script>
+        // Smooth scroll for anchor links
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                const href = this.getAttribute('href');
+                if (href !== '#') {
+                    e.preventDefault();
+                    const target = document.querySelector(href);
+                    if (target) {
+                        target.scrollIntoView({ behavior: 'smooth' });
+                    }
+                }
+            });
+        });
+
+        // Log acceptance
+        function acceptTerms() {
+            localStorage.setItem('termsAccepted', new Date().toISOString());
+            window.location.href = '/login';
+        }
+    </script>
+</body>
+</html>
+
