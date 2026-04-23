@@ -31,6 +31,23 @@ let mediaRecorder  = null;
 let recordedChunks = [];
 let recordingStartTime = 0;
 
+// Persistent audio mixer — created once, reused across recording sessions
+let _recAudioCtx      = null;   // AudioContext (stays open for the meeting duration)
+let _recDest          = null;   // MediaStreamDestination (the mixed output)
+let _recLocalAdded    = false;  // whether student mic is already wired in
+let _recTeacherAdded  = false;  // whether teacher track is already wired in
+
+let _isTranscribingActive = false; // true while speech recognition should accumulate text
+let _isMeetingActive      = false; // true for the whole meeting duration
+let _isRecordingActive    = false; // true while MediaRecorder is running
+let _redirectAfterUpload  = false; // redirect to /student/room after upload on meeting end
+let _pendingTranscripts   = [];    // STOMP payloads queued while WebSocket handshakes
+
+// Rolling-buffer constants — keep at most the last 60 seconds of audio
+const _REC_CHUNK_MS   = 5000; // emit a chunk every 5 s
+const _REC_MAX_CHUNKS = 12;   // 12 × 5 s = 60 s window
+let   _rollChunks     = [];   // current rolling chunk buffer
+
 // ===== Boot =====
 function buildInitials(name) {
     if (!name) return 'U';
@@ -75,12 +92,27 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // CRITICAL: Wait for mic permission BEFORE connecting WebSocket.
+    // CRITICAL: get mic permission BEFORE connecting WebSocket.
     initAudio().then(() => {
-        // Start recording immediately if mic is on and recording is enabled
-        _startRecordingIfReady();
+        _isMeetingActive = true;
+        _initSpeechRecognition();
+
+        // Student joins with mic ON by default — start recording and transcription now.
+        if (isMicOn) {
+            _isTranscribingActive = true;
+            if (_speechRecognition) {
+                try { _speechRecognition.start(); } catch(e) {
+                    console.warn('[STT] initial start error:', e.message);
+                }
+            }
+            _startRollingRecorder();
+            _startSttWatchdog();   // keep STT alive for the whole meeting
+        }
         connectWebSocket();
-    }).catch(() => connectWebSocket());
+    }).catch(() => {
+        _isMeetingActive = true;
+        connectWebSocket();
+    });
 });
 
 // ===== Audio init =====
@@ -95,29 +127,184 @@ async function initAudio() {
     }
 }
 
-// Start MediaRecorder if mic is on, recording enabled, and stream exists
-function _startRecordingIfReady() {
-    if (!RECORDING_ENABLED || !localStream || !isMicOn) return;
+// ── Persistent audio mixer (student mic + teacher remote audio) ───────────────
+//
+// The mixer is created ONCE when the student's mic is ready.
+// The teacher's audio track is wired in dynamically via _addTeacherToMixer()
+// which is called from playHostAudio() every time the WebRTC stream arrives.
+// MediaRecorder reads from _recDest.stream so it always has both voices.
+
+function _initRecordingMixer() {
+    if (_recAudioCtx && _recAudioCtx.state !== 'closed') return; // already alive
     try {
-        recordedChunks = [];
+        const Ctx = window.AudioContext || window.webkitAudioContext;
+        if (!Ctx) return;
+        _recAudioCtx     = new Ctx();
+        _recDest         = _recAudioCtx.createMediaStreamDestination();
+        _recLocalAdded   = false;
+        _recTeacherAdded = false;
+        console.log('[Mixer] AudioContext created');
+    } catch (e) {
+        console.warn('[Mixer] init failed – will record mic-only:', e);
+        _recAudioCtx = null;
+        _recDest     = null;
+    }
+}
+
+function _addLocalMicToMixer() {
+    if (!_recAudioCtx || !_recDest || _recLocalAdded) return;
+    if (!localStream || localStream.getAudioTracks().length === 0) return;
+    try {
+        if (_recAudioCtx.state === 'suspended') _recAudioCtx.resume();
+        _recAudioCtx.createMediaStreamSource(localStream).connect(_recDest);
+        _recLocalAdded = true;
+        console.log('[Mixer] Student mic connected');
+    } catch (e) {
+        console.warn('[Mixer] addLocalMic failed:', e);
+    }
+}
+
+// Called from playHostAudio() whenever the teacher's WebRTC stream arrives/changes
+function _addTeacherToMixer(stream) {
+    if (!stream) return;
+    _initRecordingMixer();           // create if not yet done
+    _addLocalMicToMixer();           // ensure student mic is in the mix
+    if (!_recAudioCtx || !_recDest) return;
+    try {
+        const tracks = (stream instanceof MediaStream)
+            ? stream.getAudioTracks()
+            : [];
+        if (tracks.length === 0) return;
+        if (_recAudioCtx.state === 'suspended') _recAudioCtx.resume();
+        _recAudioCtx.createMediaStreamSource(new MediaStream(tracks)).connect(_recDest);
+        _recTeacherAdded = true;
+        console.log('[Mixer] Teacher audio connected – both voices in mix');
+    } catch (e) {
+        console.warn('[Mixer] addTeacher failed:', e);
+    }
+}
+
+// ── Noise-word transcript filter ──────────────────────────────────────────────
+// Returns true when the text is too short or is only noise/filler words.
+const _NOISE_WORDS = new Set([
+    'okay','ok','yes','no','yeah','yep','nope','hmm','um','uh','ah',
+    'oh','right','sure','fine','good','great','thanks','thank you',
+    'alright','alright then','got it','i see','understood'
+]);
+function _isNoisyTranscript(text) {
+    if (!text) return true;
+    const trimmed = text.trim().toLowerCase().replace(/[.!?,;]+$/,'');
+    if (trimmed.length < 2) return true;           // only single chars get filtered
+    if (_NOISE_WORDS.has(trimmed)) return true;    // exact noise phrase match
+    // Filter ONLY if every word is a noise word (e.g. "okay yes" → noisy)
+    const words = trimmed.split(/\s+/);
+    if (words.length <= 2 && words.every(w => _NOISE_WORDS.has(w))) return true;
+    return false;
+}
+
+// ── Rolling-window recorder ───────────────────────────────────────────────────
+// Records in 5-second chunks, keeping only the last 60 seconds.
+// Triggered on mic-unmute; saved to server on mic-mute (or meeting end).
+// This captures exactly what matters: teacher's recent question + student's answer.
+
+function _startRollingRecorder() {
+    if (!RECORDING_ENABLED || !localStream) return;
+    if (_isRecordingActive) return; // already running
+    try {
+        _initRecordingMixer();
+        _addLocalMicToMixer();
+        // Resume AudioContext — safe after user interaction (mic button click)
+        if (_recAudioCtx && _recAudioCtx.state === 'suspended') {
+            _recAudioCtx.resume().catch(() => {});
+        }
+
+        _rollChunks = [];
         const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
             ? 'audio/webm;codecs=opus'
             : MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : '';
         const opts = mimeType ? { mimeType } : {};
-        mediaRecorder = new MediaRecorder(localStream, opts);
+
+        const stream = (_recDest && _recDest.stream && _recDest.stream.getTracks().length > 0)
+            ? _recDest.stream : localStream;
+
+        mediaRecorder = new MediaRecorder(stream, opts);
         mediaRecorder.ondataavailable = e => {
-            if (e.data && e.data.size > 0) recordedChunks.push(e.data);
+            if (e.data && e.data.size > 0) {
+                _rollChunks.push(e.data);
+                // Enforce rolling window — drop oldest chunk when full
+                while (_rollChunks.length > _REC_MAX_CHUNKS) _rollChunks.shift();
+            }
         };
-        mediaRecorder.onstop = _onRecordingStop;
+        mediaRecorder.onstop = _saveSegment;
         recordingStartTime = Date.now();
-        mediaRecorder.start(500);
-        // Start speech-to-text transcription alongside recording
-        _startTranscription();
-        console.log('Recording + transcription started');
+        mediaRecorder.start(_REC_CHUNK_MS);
+        _isRecordingActive    = true;
+        _isTranscribingActive = true;
+        console.log('[Recording] Rolling recorder started (max', _REC_MAX_CHUNKS * _REC_CHUNK_MS / 1000, 's window)');
     } catch (err) {
-        console.error('MediaRecorder start error:', err);
+        console.error('[Recording] Start error:', err);
+        _isRecordingActive = false;
     }
 }
+
+// Called when the rolling recorder stops — uploads the buffered window then
+// either redirects (end-of-meeting) or restarts for the next interaction.
+function _saveSegment() {
+    const willRedirect = _redirectAfterUpload;
+    _redirectAfterUpload  = false;
+    _isRecordingActive    = false;
+    _isTranscribingActive = false;
+
+    const chunks = _rollChunks.slice(); // snapshot
+    _rollChunks = [];
+
+    if (chunks.length < 2) {
+        console.log('[Recording] Segment too short, skipping upload');
+        if (willRedirect) { window.location.href = '/student/room'; }
+        else if (_isMeetingActive) { _startRollingRecorder(); } // keep capturing teacher audio
+        return;
+    }
+
+    const mimeType      = (mediaRecorder && mediaRecorder.mimeType) ? mediaRecorder.mimeType : 'audio/webm';
+    const durationSecs  = Math.max(1, Math.round(chunks.length * _REC_CHUNK_MS / 1000));
+    const blob          = new Blob(chunks, { type: mimeType });
+
+    // Grab speech-recognition text and reset for next segment
+    _stopTranscriptionAsync();
+    const transcript = _getTranscriptResult();
+    console.log('[Recording] Uploading', durationSecs + 's,', 'transcript:', transcript || '(none)');
+
+    uploadRecording(blob, durationSecs, transcript)
+        .then(() => {
+            console.log('[Recording] Upload OK');
+            if (willRedirect) {
+                window.location.href = '/student/room';
+            } else {
+                showSrNotifToast('Clip Saved', '✅ ' + durationSecs + 's clip saved.', 'MEETING_STARTED');
+                // Always restart the recorder so teacher audio is captured even while
+                // student is muted.  The student mic track is already disabled at the
+                // WebRTC level so no student noise leaks in during mute.
+                if (_isMeetingActive) {
+                    _startRollingRecorder();
+                }
+            }
+        })
+        .catch(err => {
+            console.error('[Recording] Upload failed:', err);
+            if (willRedirect) {
+                window.location.href = '/student/room';
+            } else {
+                showSrNotifToast('Upload Failed', '❌ ' + err.message, 'MEETING_STARTED');
+                // Still restart so we don't lose teacher audio
+                if (_isMeetingActive) {
+                    _startRollingRecorder();
+                }
+            }
+        });
+}
+
+// Keep for any legacy call-sites — delegates to rolling recorder
+function _startRecordingIfReady() { _startRollingRecorder(); }
 
 // ===== WebSocket =====
 let _wsReconnectTimer = null;
@@ -155,6 +342,11 @@ function connectWebSocket() {
                 const data = JSON.parse(m.body);
                 if (data) showSrNotifToast(data.title, data.message, data.type);
             });
+        }
+
+        // Flush any transcripts that were recognized before WS was ready
+        while (_pendingTranscripts.length > 0) {
+            stompClient.send('/app/transcript/' + MEETING_CODE, {}, _pendingTranscripts.shift());
         }
 
         sendParticipantEvent('join');
@@ -281,6 +473,9 @@ function playHostAudio(stream) {
     }
     audio.srcObject = stream;
 
+    // Wire teacher's audio into the recording mixer so both voices are captured
+    _addTeacherToMixer(stream);
+
     const playPromise = audio.play();
     if (playPromise !== undefined) {
         playPromise.catch(() => {
@@ -344,10 +539,21 @@ function handleParticipantEvent(data) {
 
 function handleControlEvent(data) {
     if (data.event === 'end-meeting') {
-        // Show a brief toast then redirect — avoid blocking alert()
-        showSrNotifToast('Meeting Ended', 'The teacher has ended the meeting.', 'MEETING_STARTED');
+        showSrNotifToast('Meeting Ended', 'Saving your recording…', 'MEETING_STARTED');
         hideHostAudio();
-        setTimeout(() => { window.location.href = '/student/room'; }, 2500);
+        _isMeetingActive      = false;
+        _isTranscribingActive = false;
+
+        if (_speechRecognition) { try { _speechRecognition.stop(); } catch(e) {} }
+
+        if (_isRecordingActive && mediaRecorder && mediaRecorder.state !== 'inactive') {
+            // _saveSegment will upload and then redirect
+            _redirectAfterUpload = true;
+            try { mediaRecorder.stop(); } catch(e) { window.location.href = '/student/room'; }
+        } else {
+            // Nothing to upload — go straight to room list
+            setTimeout(() => { window.location.href = '/student/room'; }, 1800);
+        }
     } else if (data.event === 'mute-all') {
         srToggleMic(true);
     }
@@ -365,20 +571,25 @@ function srToggleMic(forceMute) {
     } else {
         isMicOn = forceMute === true ? false : !isMicOn;
     }
-
     _updateMicUI(isMicOn);
 
     if (isMicOn) {
-        // ── Start recording only when teacher has recording enabled ──
-        _startRecordingIfReady();
+        // ── UNMUTED ──────────────────────────────────────────────────────────
+        _isTranscribingActive = true;
+        if (!_speechRecognition) _initSpeechRecognition();
+        if (_speechRecognition && !_sttRunning) {
+            try { _speechRecognition.start(); } catch(e) {}
+        }
+        _startRollingRecorder();
+        _startSttWatchdog();
     } else {
-        // ── Stop recording ──
-        if (RECORDING_ENABLED && mediaRecorder && mediaRecorder.state !== 'inactive') {
-            try {
-                mediaRecorder.stop();
-            } catch (e) {
-                console.error('MediaRecorder stop error:', e);
-            }
+        // ── MUTED ────────────────────────────────────────────────────────────
+        _isTranscribingActive = false;
+        _stopSttWatchdog();
+        if (_speechRecognition) { try { _speechRecognition.stop(); } catch(e) {} }
+
+        if (_isRecordingActive && mediaRecorder && mediaRecorder.state !== 'inactive') {
+            try { mediaRecorder.stop(); } catch(e) { _isRecordingActive = false; }
         }
     }
 
@@ -408,39 +619,8 @@ function _updateMicUI(micOn) {
     }
 }
 
-// ── Called when MediaRecorder.stop() finishes ──
-function _onRecordingStop() {
-    if (!recordedChunks || recordedChunks.length === 0) return;
-    const durationSecs = Math.max(1, Math.round((Date.now() - recordingStartTime) / 1000));
-    const mimeType = (mediaRecorder && mediaRecorder.mimeType) ? mediaRecorder.mimeType : 'audio/webm';
-    const blob = new Blob(recordedChunks, { type: mimeType });
-    recordedChunks = [];
-    mediaRecorder = null;
-
-    // Stop speech recognition — then wait 600ms for final results to arrive
-    _stopTranscriptionAsync();
-
-    // Delay upload so recognition has time to deliver final results
-    setTimeout(function() {
-        const transcript = _getTranscriptResult();
-        console.log('Transcript captured:', transcript || '(empty — speech API may not be supported)');
-
-        // AUTO-UPLOAD to server immediately (teacher gets it instantly)
-        console.log('Auto-uploading recording (' + durationSecs + 's) to server...');
-        uploadRecording(blob, durationSecs, transcript)
-            .then(() => {
-                console.log('Recording auto-uploaded successfully');
-                showSrNotifToast('Recording Saved', '✅ ' + durationSecs + 's clip saved to server.', 'MEETING_STARTED');
-            })
-            .catch(err => {
-                console.error('Auto-upload failed:', err);
-                showSrNotifToast('Upload Failed', '❌ Could not save clip: ' + err.message, 'MEETING_STARTED');
-            });
-    }, 700);
-
-    // Also show save dialog so student can download locally
-    setTimeout(() => srShowSaveDialog(blob, durationSecs), 100);
-}
+// Legacy name — now delegates to _saveSegment
+function _onRecordingStop() { _saveSegment(); }
 
 // ===== Save Recording Dialog =====
 let _pendingBlob     = null;
@@ -545,13 +725,15 @@ function uploadRecording(blob, duration, transcript) {
         })
         .then(function(data) {
             if (!data.success) return reject(new Error(data.error || 'Upload failed'));
-            if (transcript && transcript.trim() && stompClient && stompClient.connected) {
+            const cleanTranscript = (transcript || '').trim();
+            if (cleanTranscript && stompClient && stompClient.connected) {
                 stompClient.send('/app/transcript/' + MEETING_CODE, {}, JSON.stringify({
-                    text: transcript.trim(),
+                    text:        cleanTranscript,
                     speakerName: USER_NAME,
+                    isTeacher:   false,          // always student from this page
                     recordingId: data.recordingId,
-                    startTime: 0,
-                    endTime: duration
+                    startTime:   0,
+                    endTime:     duration
                 }));
             }
             // Refresh recordings list if open
@@ -1001,9 +1183,75 @@ function srResetPlayBtn(audioId) {
 }
 
 // ===== Speech-to-Text Transcript Generation (Browser Web Speech API) =====
-let _speechRecognition = null;
-let _transcriptText = '';
-let _interimText = '';
+let _speechRecognition  = null;
+let _transcriptText     = '';
+let _interimText        = '';
+let _sttRunning         = false;   // true while recognition.start() is active
+let _sttWatchdog        = null;    // setInterval handle — restarts STT if it dies unexpectedly
+
+// ── Student-side live transcript indicator ───────────────────────────────────
+// Shows a subtle pill at the bottom of the screen so the student (and tester)
+// can see that speech recognition is actively capturing speech.
+
+// ── STT watchdog: restart recognition if it silently dies ────────────────────
+function _startSttWatchdog() {
+    clearInterval(_sttWatchdog);
+    _sttWatchdog = setInterval(() => {
+        if (!_isMeetingActive || !isMicOn) { clearInterval(_sttWatchdog); return; }
+        if (!_sttRunning && _speechRecognition) {
+            console.log('[STT Watchdog] restarting dead recognition');
+            _srUpdateSttStatus('Watchdog restart…', '#f59e0b');
+            try { _speechRecognition.start(); } catch(e) {}
+        }
+    }, 5000);  // check every 5 s
+}
+function _stopSttWatchdog() {
+    clearInterval(_sttWatchdog);
+    _sttWatchdog = null;
+}
+
+function _srEnsureLiveBanner() {
+    let b = document.getElementById('_srLiveBanner');
+    if (b) return b;
+    b = document.createElement('div');
+    b.id = '_srLiveBanner';
+    b.style.cssText =
+        'position:fixed;bottom:16px;left:50%;transform:translateX(-50%);z-index:9000;' +
+        'background:rgba(15,23,42,0.92);border:1px solid #334155;border-radius:24px;' +
+        'padding:8px 18px;font-size:12px;color:#94a3b8;display:flex;align-items:center;gap:10px;' +
+        'max-width:90vw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;' +
+        'box-shadow:0 4px 20px rgba(0,0,0,0.5);';
+    b.innerHTML =
+        '<span id="_srSttDot" style="width:8px;height:8px;border-radius:50%;background:#22c55e;flex-shrink:0;"></span>' +
+        '<span id="_srSttStatus" style="flex-shrink:0;">STT</span>' +
+        '<span style="color:#334155;">|</span>' +
+        '<span id="_srLiveText" style="color:#e2e8f0;font-style:italic;max-width:55vw;overflow:hidden;text-overflow:ellipsis;">…</span>';
+    document.body.appendChild(b);
+    return b;
+}
+function _srUpdateSttStatus(msg, color) {
+    _srEnsureLiveBanner();
+    const dot  = document.getElementById('_srSttDot');
+    const span = document.getElementById('_srSttStatus');
+    if (dot)  dot.style.background  = color || '#22c55e';
+    if (span) span.textContent = msg || '';
+}
+function _srShowInterim(text) {
+    _srEnsureLiveBanner();
+    const el = document.getElementById('_srLiveText');
+    if (el) { el.style.opacity = '0.5'; el.textContent = text || '…'; }
+}
+function _srShowLiveCapture(text) {
+    _srEnsureLiveBanner();
+    const el = document.getElementById('_srLiveText');
+    if (el) {
+        el.style.opacity = '1';
+        el.textContent   = '✔ ' + text;
+        // Fade back after 4 s
+        clearTimeout(el._fadeTimer);
+        el._fadeTimer = setTimeout(() => { if (el) { el.style.opacity = '0.5'; el.textContent = '…'; } }, 4000);
+    }
+}
 
 function _initSpeechRecognition() {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -1020,21 +1268,54 @@ function _initSpeechRecognition() {
         _interimText = '';
         for (let i = event.resultIndex; i < event.results.length; i++) {
             if (event.results[i].isFinal) {
-                _transcriptText += event.results[i][0].transcript + ' ';
+                const sentence = event.results[i][0].transcript.trim();
+                if (!sentence) continue;
+                _transcriptText += sentence + ' ';
+
+                // Show a live preview on student's own screen
+                _srShowLiveCapture(sentence);
+
+                // Always send — isTeacher: false so server creates bundled card, not teacher card
+                const payload = JSON.stringify({
+                    text:        sentence,
+                    speakerName: USER_NAME,
+                    isTeacher:   false,
+                    timestamp:   new Date().toISOString()
+                });
+                if (stompClient && stompClient.connected) {
+                    stompClient.send('/app/transcript/' + MEETING_CODE, {}, payload);
+                    console.log('[STT] Sent transcript:', sentence);
+                } else {
+                    _pendingTranscripts.push(payload);
+                    console.log('[STT] Buffered transcript (WS not ready):', sentence);
+                }
             } else {
                 _interimText += event.results[i][0].transcript;
+                // Show interim text as hint (greyed out) on student screen
+                _srShowInterim(_interimText);
             }
         }
-        console.log('Transcript progress:', (_transcriptText + _interimText).trim());
     };
     _speechRecognition.onerror = (e) => {
-        console.warn('Speech recognition error:', e.error);
-        // On "no-speech" or "aborted", just ignore — not a real failure
+        console.warn('[STT Student] error:', e.error);
+        _srUpdateSttStatus('error: ' + e.error, '#ef4444');
+        _sttRunning = false; // onend will fire after this and restart
+    };
+    _speechRecognition.onstart = () => {
+        _sttRunning = true;
+        _srUpdateSttStatus('Listening…', '#22c55e');
+        console.log('[STT] Recognition started');
     };
     _speechRecognition.onend = () => {
-        // Auto-restart if mic is still on (recognition can time out after silence)
-        if (isMicOn && _speechRecognition) {
-            try { _speechRecognition.start(); } catch(e) {}
+        _sttRunning = false;
+        // Restart as long as meeting is active and mic is on
+        if (_isMeetingActive && isMicOn && _speechRecognition) {
+            _srUpdateSttStatus('Restarting…', '#f59e0b');
+            try { _speechRecognition.start(); } catch(e) {
+                console.warn('[STT] restart error:', e.message);
+            }
+        } else {
+            _srUpdateSttStatus('Paused', '#6b7280');
         }
     };
 }
@@ -1076,16 +1357,19 @@ function _stopTranscription() {
 
 // ===== Cleanup on page leave =====
 window.addEventListener('beforeunload', function() {
-    // Cancel any pending reconnect
+    _isMeetingActive      = false;
+    _isTranscribingActive = false;
+    _isRecordingActive    = false;
+    _stopSttWatchdog();
     clearTimeout(_wsReconnectTimer);
-    // Notify other participants
+    if (_speechRecognition) { try { _speechRecognition.stop(); } catch(e) {} }
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') { try { mediaRecorder.stop(); } catch(e) {} }
     if (stompClient && stompClient.connected) {
         sendParticipantEvent('leave');
         stompClient.disconnect();
     }
-    // Close all peer connections
     Object.values(peerConnections).forEach(function(pc) { try { pc.close(); } catch(e) {} });
-    // Stop local mic stream
     if (localStream) localStream.getTracks().forEach(function(t) { t.stop(); });
+    if (_recAudioCtx) { try { _recAudioCtx.close(); } catch(e) {} _recAudioCtx = null; _recDest = null; }
 });
 

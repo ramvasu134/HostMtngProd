@@ -3,6 +3,7 @@ package com.host.studen.controller;
 import com.host.studen.model.ChatMessage;
 import com.host.studen.model.Meeting;
 import com.host.studen.model.Recording;
+import com.host.studen.model.Role;
 import com.host.studen.model.Transcript;
 import com.host.studen.model.User;
 import com.host.studen.security.CustomUserDetails;
@@ -259,11 +260,20 @@ public class WebSocketController {
             log.info("Live transcript created for user {} in meeting {}: {}", 
                     user.getDisplayName(), meetingCode, savedTranscript.getId());
 
+            // Honour the flag the client sent — teacher-dashboard sends true,
+            // student-room always sends false regardless of the user's DB role.
+            // This lets the host user test the student room without their HOST role
+            // overriding the flag and sending every transcript to the teacher card.
+            Object clientFlag = transcriptData.get("isTeacher");
+            boolean isHost = clientFlag instanceof Boolean
+                    ? (Boolean) clientFlag
+                    : (user.getRole() == Role.HOST);
             response.put("success", true);
             response.put("transcriptId", savedTranscript.getId());
             response.put("userId", user.getId());
             response.put("userName", user.getDisplayName());
             response.put("speakerName", speakerName);
+            response.put("isTeacher", isHost);
             response.put("text", transcriptText);
             response.put("startTime", startTime);
             response.put("endTime", endTime);

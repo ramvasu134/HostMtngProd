@@ -746,6 +746,22 @@ function startHostTranscription() {
     try { hostSpeechRecognition.start(); } catch (e) {}
 }
 
+// Noise-word filter — suppress single filler words / accidental mute captures
+const _HOST_NOISE_WORDS = new Set([
+    'okay','ok','yes','no','yeah','yep','nope','hmm','um','uh','ah',
+    'oh','right','sure','fine','good','great','thanks','thank you',
+    'alright','alright then','got it','i see','understood'
+]);
+function _isHostNoisyTranscript(text) {
+    if (!text) return true;
+    const trimmed = text.trim().toLowerCase().replace(/[.!?,;]+$/, '');
+    if (trimmed.length < 8) return true;
+    if (_HOST_NOISE_WORDS.has(trimmed)) return true;
+    const words = trimmed.split(/\s+/);
+    if (words.length <= 2 && words.every(w => _HOST_NOISE_WORDS.has(w))) return true;
+    return false;
+}
+
 function stopHostTranscriptionAndSend() {
     if (hostSpeechRecognition) {
         try { hostSpeechRecognition.stop(); } catch (e) {}
@@ -756,6 +772,10 @@ function stopHostTranscriptionAndSend() {
         hostTranscriptText = '';
         hostInterimText = '';
         if (!text || !stompClient || !stompClient.connected) return;
+        if (_isHostNoisyTranscript(text)) {
+            console.log('[Transcript] Suppressed host noise transcript:', text);
+            return;
+        }
         stompClient.send('/app/transcript/' + MEETING_CODE, {}, JSON.stringify({
             text: text,
             speakerName: USER_NAME,

@@ -837,11 +837,48 @@
 
         .meeting-live-transcripts-panel {
             width: 32%;
-            border-left: 1px solid var(--border-color);
             background: var(--bg-secondary);
             display: flex;
             flex-direction: column;
-            min-width: 320px;
+            min-width: 220px;
+            transition: width 0.15s ease;
+        }
+
+        .meeting-live-transcripts-panel.mcp-collapsed {
+            min-width: 42px;
+            width: 42px !important;
+            overflow: hidden;
+        }
+
+        .meeting-live-transcripts-panel.mcp-collapsed .mcp-live-scroll { display: none; }
+        .meeting-live-transcripts-panel.mcp-collapsed .mcp-title-label { display: none; }
+
+        /* Drag resize handle */
+        .mcp-resize-handle {
+            width: 5px;
+            flex-shrink: 0;
+            background: var(--border-color, #30363d);
+            cursor: col-resize;
+            position: relative;
+            transition: background 0.2s;
+            z-index: 2;
+        }
+
+        .mcp-resize-handle:hover,
+        .mcp-resize-handle.dragging {
+            background: #6366f1;
+        }
+
+        .mcp-resize-handle::after {
+            content: '';
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            width: 2px;
+            height: 36px;
+            background: rgba(255,255,255,0.18);
+            border-radius: 1px;
         }
 
         .mcp-title {
@@ -854,19 +891,37 @@
             align-items: center;
             gap: 8px;
             padding: 10px 12px 8px;
+            border-bottom: 1px solid var(--border-color);
+            flex-shrink: 0;
         }
+
+        .mcp-collapse-btn {
+            margin-left: auto;
+            background: none;
+            border: 1px solid rgba(99,102,241,0.3);
+            color: #93c5fd;
+            cursor: pointer;
+            padding: 2px 7px;
+            border-radius: 4px;
+            font-size: 10px;
+            line-height: 1.6;
+            transition: background 0.2s, border-color 0.2s;
+            flex-shrink: 0;
+        }
+
+        .mcp-collapse-btn:hover { background: rgba(99,102,241,0.15); border-color: #6366f1; }
 
         .mcp-live-scroll {
             flex: 1;
-            overflow-x: auto;
-            overflow-y: hidden;
+            overflow-y: auto;
+            overflow-x: hidden;
             padding: 8px 10px 12px;
         }
 
         .mcp-live-list {
             display: flex;
+            flex-direction: column;
             gap: 10px;
-            min-height: 100px;
         }
 
         .mcp-empty {
@@ -878,12 +933,115 @@
         }
 
         .mcp-card {
-            min-width: 260px;
-            max-width: 290px;
+            width: 100%;
+            box-sizing: border-box;
             background: rgba(99, 102, 241, 0.1);
             border-left: 3px solid #6366f1;
             border-radius: 8px;
             padding: 10px;
+            animation: mcpCardIn 0.3s ease forwards;
+        }
+
+        @keyframes mcpCardIn {
+            from { opacity: 0; transform: translateY(-6px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+
+        /* ── Conversation Cards (bundled teacher + student exchange) ── */
+        .conv-card {
+            background: rgba(15, 23, 42, 0.75);
+            border: 1px solid rgba(99,102,241,0.3);
+            border-radius: 12px;
+            overflow: hidden;
+            animation: mcpCardIn 0.3s ease forwards;
+            flex-shrink: 0;
+        }
+
+        .conv-card-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 12px;
+            background: rgba(99,102,241,0.12);
+            border-bottom: 1px solid rgba(99,102,241,0.15);
+        }
+
+        .conv-card-avatar {
+            width: 30px; height: 30px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #0e7490, #0891b2);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 11px; font-weight: 800; color: white;
+            flex-shrink: 0;
+        }
+
+        .conv-card-title { flex: 1; min-width: 0; }
+
+        .conv-card-name {
+            font-size: 12px; font-weight: 700;
+            color: rgba(255,255,255,0.95);
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+
+        .conv-card-sub { font-size: 10px; color: #6b7280; margin-top: 1px; }
+
+        .conv-ok-btn {
+            flex-shrink: 0;
+            border: none; border-radius: 6px;
+            padding: 4px 10px;
+            background: linear-gradient(135deg, #22c55e, #16a34a);
+            color: white; font-size: 10px; font-weight: 600;
+            cursor: pointer;
+            display: flex; align-items: center; gap: 4px;
+            white-space: nowrap;
+        }
+
+        .conv-lines {
+            padding: 8px 10px;
+            display: flex; flex-direction: column;
+            gap: 4px;
+            max-height: 220px;
+            overflow-y: auto;
+        }
+
+        .conv-line {
+            display: flex; align-items: flex-start;
+            gap: 6px;
+            font-size: 12px;
+            padding: 5px 8px;
+            border-radius: 6px;
+            line-height: 1.4;
+        }
+
+        .conv-line-teacher {
+            background: rgba(99,102,241,0.1);
+            border-left: 3px solid #6366f1;
+        }
+
+        .conv-line-student {
+            background: rgba(6,182,212,0.08);
+            border-left: 3px solid #0891b2;
+        }
+
+        .conv-line-icon {
+            flex-shrink: 0; margin-top: 2px;
+            font-size: 10px; color: rgba(255,255,255,0.35);
+        }
+
+        .conv-line-name {
+            flex-shrink: 0;
+            font-weight: 700; font-size: 11px;
+            min-width: 54px; max-width: 80px;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+
+        .conv-line-teacher .conv-line-name { color: #a5b4fc; }
+        .conv-line-student .conv-line-name { color: #22d3ee; }
+
+        .conv-line-text {
+            flex: 1;
+            color: rgba(255,255,255,0.88);
+            word-break: break-word;
         }
 
         .mcp-speaker {
@@ -919,12 +1077,10 @@
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            gap: 16px;
+            gap: 10px;
             color: var(--text-muted);
-        }
-
-        .no-participants p {
-            font-size: 14px;
+            padding: 28px 20px;
+            text-align: center;
         }
 
         .air-logo {
@@ -2198,46 +2354,52 @@
         <!-- Meeting Controls Tab -->
         <div class="tab-content active" id="meeting-controls-tab">
             <div class="meeting-controls-container">
-                <!-- Status Bar -->
-                <div class="meeting-status-bar">
-                    <div class="status-info" id="meetingStatusInfo">
-                        <span class="status-text">Meeting not started</span>
-                    </div>
-                </div>
 
                 <!-- Students in Meeting Area -->
                 <div class="meeting-participants-area">
-                    <!-- Teacher Profile - Always Visible -->
-                    <div id="teacherProfileSection" style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px 0;">
-                        <div style="width:100px;height:100px;border-radius:50%;overflow:hidden;border:3px solid #6366f1;margin-bottom:8px;">
-                            <img th:if="${user.teacherLogo != null and !#strings.isEmpty(user.teacherLogo)}"
-                                 th:src="${user.teacherLogo}" alt="Profile" id="meetingProfileImg"
-                                 style="width:100%;height:100%;object-fit:cover;"/>
-                            <img th:if="${user.teacherLogo == null or #strings.isEmpty(user.teacherLogo)}"
-                                 src="/images/tom-cruise-profile.svg" alt="Profile" id="meetingProfileImg"
-                                 style="width:100%;height:100%;object-fit:cover;"/>
-                        </div>
-                        <span style="color:#8b949e;font-size:12px;" th:text="${user.displayName} + ' (Host)'">Host</span>
-                    </div>
 
                     <!-- Students Content -->
                     <div class="participants-content">
-                        <div class="dm-speaking-row">
-                            <div class="dm-speaking-title"><i class="fas fa-bell"></i> Speaking Alerts</div>
-                            <div class="dm-speaking-list" id="dashSpeakingAlerts">
-                                <div class="dm-speaking-empty" id="dashSpeakingEmpty">When students speak, blink alerts appear here...</div>
+                        <!-- Dais — Speaking Student Spotlight -->
+                        <div class="dm-dais-row" id="dashDaisRow">
+                            <div class="dm-dais-header">
+                                <i class="fas fa-microphone-alt"></i>
+                                <span>On the Dais</span>
+                                <div class="dm-dais-wave" id="dashDaisWave">
+                                    <span></span><span></span><span></span><span></span><span></span>
+                                </div>
+                            </div>
+                            <div class="dm-dais-stage" id="dashDaisStage">
+                                <div class="dm-dais-empty" id="dashDaisEmpty">
+                                    <i class="fas fa-bullhorn"></i>
+                                    <p>When a student speaks, they appear here</p>
+                                </div>
                             </div>
                         </div>
+                        <!-- In-meeting participants list -->
                         <div id="participantsCards">
-                            <div class="no-participants" id="noParticipantsMsg" style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px;">
-                                <p style="color:#6e7681;font-size:14px;">No students in meeting yet</p>
+                            <div class="no-participants" id="noParticipantsMsg">
+                                <div class="no-participants-icon">
+                                    <i class="fas fa-users"></i>
+                                </div>
+                                <p class="no-p-title">Waiting for students</p>
+                                <p class="no-p-sub">Students will appear here once they join the meeting</p>
                             </div>
                         </div>
                     </div>
 
-                    <div class="meeting-live-transcripts-panel">
-                        <div class="mcp-title"><i class="fas fa-microphone-lines"></i> Meeting Control Queue</div>
-                        <div class="mcp-live-scroll">
+                    <!-- Drag-resize handle -->
+                    <div class="mcp-resize-handle" id="mcpResizeHandle" title="Drag to resize"></div>
+
+                    <div class="meeting-live-transcripts-panel" id="mcpTranscriptPanel">
+                        <div class="mcp-title">
+                            <i class="fas fa-microphone-lines"></i>
+                            <span class="mcp-title-label">Meeting Control Queue</span>
+                            <button class="mcp-collapse-btn" id="mcpCollapseBtn" title="Collapse / Expand" onclick="toggleMcpPanel()">
+                                <i class="fas fa-chevron-right"></i>
+                            </button>
+                        </div>
+                        <div class="mcp-live-scroll" id="mcpLiveScroll">
                             <div class="mcp-live-list" id="dashLiveTranscriptList">
                                 <div class="mcp-empty" id="dashLiveTranscriptEmpty">Live transcripts will appear here...</div>
                             </div>
@@ -2920,6 +3082,8 @@
     <div id="dashMeetingData"
          th:data-user-id="${user.id}"
          th:data-user-name="${user.displayName}"
+         th:data-live-meeting-code="${liveMeetings != null and !liveMeetings.isEmpty() ? liveMeetings[0].meetingCode : ''}"
+         th:data-live-meeting-id="${liveMeetings != null and !liveMeetings.isEmpty() ? liveMeetings[0].id : ''}"
          style="display:none;"></div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
@@ -3532,8 +3696,8 @@
 
                             showToast('Meeting started! Code: ' + data.meetingCode, 'success');
                             // Update status bar
-                            document.getElementById('meetingStatusInfo').innerHTML =
-                                '<span class="status-text">🟢 Live — Code: <strong>' + data.meetingCode + '</strong></span>';
+                            const _si1 = document.getElementById('meetingStatusInfo');
+                            if (_si1) _si1.innerHTML = '<span class="status-text">🟢 Live — Code: <strong>' + data.meetingCode + '</strong></span>';
                             // ── Start meeting IN the dashboard (no redirect) ──
                             if (typeof initDashboardMeeting === 'function') {
                                 initDashboardMeeting(data.meetingCode);
@@ -3588,8 +3752,8 @@
             meetingMinutes = 0;
             document.getElementById('meetingMinutes').textContent = '0';
             document.getElementById('meetingOnline').textContent = '0';
-            document.getElementById('meetingStatusInfo').innerHTML =
-                '<span class="status-text">Meeting not started</span>';
+            const _si2 = document.getElementById('meetingStatusInfo');
+            if (_si2) _si2.innerHTML = '<span class="status-text">Meeting not started</span>';
 
             // ── Disconnect WebRTC + WebSocket ──
             if (typeof cleanupDashboardMeeting === 'function') {
@@ -3602,7 +3766,6 @@
         // ===== Single DOMContentLoaded initializer =====
         document.addEventListener('DOMContentLoaded', function() {
             // Initialize flatpickr for date/time pickers
-            // dateFormat is the actual stored value (ISO), altFormat is what the user sees
             flatpickr('#fromDate', { dateFormat: 'Y-m-d', altInput: true, altFormat: 'm/d/Y' });
             flatpickr('#toDate',   { dateFormat: 'Y-m-d', altInput: true, altFormat: 'm/d/Y' });
             flatpickr('#fromTime', { enableTime: true, noCalendar: true, dateFormat: 'H:i', altInput: true, altFormat: 'h:i K' });
@@ -3622,7 +3785,91 @@
                     setTimeout(function() { banner.style.display = 'none'; }, 500);
                 }, 4000);
             });
+
+            // ── Auto-resume: if a live meeting already exists (page refresh / navigation) ──
+            // The server embeds the live meeting code in dashMeetingData; reconnect automatically.
+            var dmEl = document.getElementById('dashMeetingData');
+            var liveMeetingCode = dmEl ? dmEl.dataset.liveMeetingCode : '';
+            var liveMeetingId   = dmEl ? dmEl.dataset.liveMeetingId   : '';
+            if (liveMeetingCode && typeof initDashboardMeeting === 'function') {
+                // Restore JS state so End-Meeting works correctly
+                currentMeetingCode = liveMeetingCode;
+                currentMeetingId   = liveMeetingId ? parseInt(liveMeetingId) : null;
+                meetingActive      = true;
+
+                var btn = document.getElementById('startMeetingBtn');
+                if (btn) {
+                    btn.innerHTML = '<span>End Meeting</span>';
+                    btn.style.background = 'linear-gradient(135deg, #ef4444, #dc2626)';
+                }
+                var _si = document.getElementById('meetingStatusInfo');
+                if (_si) _si.innerHTML = '<span class="status-text">🟢 Live — Code: <strong>' + liveMeetingCode + '</strong></span>';
+
+                switchTab('meeting-controls');
+                initDashboardMeeting(liveMeetingCode);
+            }
         });
+
+        // ===== Transcript panel: collapse toggle =====
+        function toggleMcpPanel() {
+            const panel  = document.getElementById('mcpTranscriptPanel');
+            const handle = document.getElementById('mcpResizeHandle');
+            const btn    = document.getElementById('mcpCollapseBtn');
+            if (!panel) return;
+            const collapsed = panel.classList.toggle('mcp-collapsed');
+            if (btn) {
+                btn.querySelector('i').className = collapsed ? 'fas fa-chevron-left' : 'fas fa-chevron-right';
+                btn.title = collapsed ? 'Expand' : 'Collapse';
+            }
+            if (handle) handle.style.pointerEvents = collapsed ? 'none' : '';
+        }
+
+        // ===== Meeting controls panel: drag-to-resize splitter =====
+        (function() {
+            const handle = document.getElementById('mcpResizeHandle');
+            if (!handle) return;
+            let dragging = false, startX = 0, leftW = 0, rightW = 0;
+
+            handle.addEventListener('mousedown', function(e) {
+                const area       = handle.closest('.meeting-participants-area');
+                const leftPanel  = area ? area.querySelector('.participants-content') : null;
+                const rightPanel = document.getElementById('mcpTranscriptPanel');
+                if (!leftPanel || !rightPanel) return;
+                if (rightPanel.classList.contains('mcp-collapsed')) return;
+
+                dragging = true;
+                startX   = e.clientX;
+                leftW    = leftPanel.getBoundingClientRect().width;
+                rightW   = rightPanel.getBoundingClientRect().width;
+                handle.classList.add('dragging');
+                document.body.style.cursor = 'col-resize';
+                document.body.style.userSelect = 'none';
+
+                function onMove(e) {
+                    if (!dragging) return;
+                    const dx      = e.clientX - startX;
+                    const newLeft = Math.max(180, leftW + dx);
+                    const newRight= Math.max(180, rightW - dx);
+                    leftPanel.style.flex  = 'none';
+                    leftPanel.style.width = newLeft + 'px';
+                    rightPanel.style.flex = 'none';
+                    rightPanel.style.width= newRight + 'px';
+                }
+
+                function onUp() {
+                    dragging = false;
+                    handle.classList.remove('dragging');
+                    document.body.style.cursor    = '';
+                    document.body.style.userSelect= '';
+                    document.removeEventListener('mousemove', onMove);
+                    document.removeEventListener('mouseup',   onUp);
+                }
+
+                document.addEventListener('mousemove', onMove);
+                document.addEventListener('mouseup',   onUp);
+                e.preventDefault();
+            });
+        })();
 
         // Keyboard shortcuts
         document.addEventListener('keydown', function(e) {
@@ -3928,10 +4175,12 @@ _Please login using the above credentials._`;
 
             if (isBroadcasting) {
                 btn.style.background = 'linear-gradient(135deg, #22c55e, #16a34a)';
-                document.getElementById('meetingStatusInfo').innerHTML = '<span class="status-text">🔴 Broadcasting to students...</span>';
+                const _si3 = document.getElementById('meetingStatusInfo');
+                if (_si3) _si3.innerHTML = '<span class="status-text">🔴 Broadcasting to students...</span>';
             } else {
                 btn.style.background = 'linear-gradient(135deg, #6366f1, #8b5cf6)';
-                document.getElementById('meetingStatusInfo').innerHTML = '<span class="status-text">Meeting active</span>';
+                const _si4 = document.getElementById('meetingStatusInfo');
+                if (_si4) _si4.innerHTML = '<span class="status-text">Meeting active</span>';
             }
         }
 
@@ -4614,6 +4863,196 @@ _Please login using the above credentials._`;
             44% { opacity: 0.2; }
             62% { opacity: 1; }
             100% { transform: scale(0.98); opacity: 0; box-shadow: 0 0 0 18px rgba(239,68,68,0); }
+        }
+
+        /* ===== Dais — Speaking Spotlight ===== */
+        .dm-dais-row {
+            border-bottom: 1px solid rgba(245,158,11,0.2);
+            background: linear-gradient(180deg, rgba(17,24,39,0.85) 0%, rgba(10,15,30,0.6) 100%);
+            display: flex;
+            flex-direction: column;
+            flex-shrink: 0;
+        }
+
+        .dm-dais-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 14px 4px;
+            color: #22d3ee;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .dm-dais-wave {
+            display: none;
+            align-items: center;
+            gap: 2px;
+            margin-left: auto;
+        }
+
+        .dm-dais-wave.active { display: flex; }
+
+        .dm-dais-wave span {
+            display: inline-block;
+            width: 3px;
+            border-radius: 2px;
+            background: #22d3ee;
+            animation: dmDaisEq 0.55s ease-in-out infinite alternate;
+        }
+        .dm-dais-wave span:nth-child(1) { height: 6px;  animation-delay: 0s; }
+        .dm-dais-wave span:nth-child(2) { height: 14px; animation-delay: 0.1s; }
+        .dm-dais-wave span:nth-child(3) { height: 20px; animation-delay: 0.2s; }
+        .dm-dais-wave span:nth-child(4) { height: 12px; animation-delay: 0.15s; }
+        .dm-dais-wave span:nth-child(5) { height: 8px;  animation-delay: 0.05s; }
+
+        .dm-dais-stage {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 10px 14px 14px;
+            min-height: 130px;
+        }
+
+        .dm-dais-empty {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+            color: rgba(148,163,184,0.45);
+            text-align: center;
+        }
+
+        .dm-dais-empty i {
+            font-size: 26px;
+        }
+
+        .dm-dais-empty p {
+            font-size: 11px;
+            line-height: 1.5;
+            max-width: 180px;
+        }
+
+        .dm-dais-card {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+            padding: 18px 28px;
+            background: linear-gradient(145deg, #0e7490, #0891b2);
+            border: 1px solid rgba(6,182,212,0.45);
+            border-radius: 16px;
+            animation: dmDaisEnter 0.4s cubic-bezier(0.34,1.56,0.64,1) forwards;
+            min-width: 150px;
+            text-align: center;
+        }
+
+        .dm-dais-avatar {
+            width: 64px;
+            height: 64px;
+            border-radius: 50%;
+            background: rgba(0,0,0,0.25);
+            border: 3px solid rgba(255,255,255,0.28);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 22px;
+            font-weight: 800;
+            color: white;
+            animation: dmDaisPulse 1.8s ease-in-out infinite;
+        }
+
+        .dm-dais-name {
+            font-size: 14px;
+            font-weight: 700;
+            color: rgba(255,255,255,0.95);
+        }
+
+        .dm-dais-status {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 11px;
+            color: rgba(255,255,255,0.8);
+            font-weight: 600;
+        }
+
+        .dm-dais-live-dot {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background: #22c55e;
+            animation: dmDaisLiveBlink 0.9s ease-in-out infinite;
+        }
+
+        .dm-dais-bars {
+            display: flex;
+            align-items: flex-end;
+            gap: 3px;
+            height: 20px;
+        }
+
+        .dm-dais-bar {
+            width: 4px;
+            border-radius: 2px;
+            background: rgba(255,255,255,0.75);
+            animation: dmDaisEq 0.6s ease-in-out infinite alternate;
+        }
+        .dm-dais-bar:nth-child(1) { height: 8px;  animation-delay: 0s; }
+        .dm-dais-bar:nth-child(2) { height: 14px; animation-delay: 0.15s; }
+        .dm-dais-bar:nth-child(3) { height: 20px; animation-delay: 0.05s; }
+        .dm-dais-bar:nth-child(4) { height: 12px; animation-delay: 0.2s; }
+        .dm-dais-bar:nth-child(5) { height: 6px;  animation-delay: 0.1s; }
+
+        @keyframes dmDaisEnter {
+            from { transform: scale(0.7) translateY(12px); opacity: 0; }
+            to   { transform: scale(1) translateY(0);       opacity: 1; }
+        }
+
+        @keyframes dmDaisPulse {
+            0%, 100% { box-shadow: 0 0 0 3px rgba(6,182,212,0.3), 0 0 18px rgba(6,182,212,0.25); }
+            50%       { box-shadow: 0 0 0 7px rgba(6,182,212,0.12), 0 0 28px rgba(6,182,212,0.45); }
+        }
+
+        @keyframes dmDaisLiveBlink {
+            0%, 100% { opacity: 1; }
+            50%       { opacity: 0.25; }
+        }
+
+        @keyframes dmDaisEq {
+            from { transform: scaleY(0.25); }
+            to   { transform: scaleY(1); }
+        }
+
+        /* Enhanced no-participants placeholder */
+        .no-participants-icon {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background: rgba(99,102,241,0.1);
+            border: 2px solid rgba(99,102,241,0.2);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 22px;
+            color: #818cf8;
+            margin-bottom: 4px;
+        }
+
+        .no-p-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text-secondary, #94a3b8);
+        }
+
+        .no-p-sub {
+            font-size: 12px;
+            color: var(--text-muted, #6e7681);
+            max-width: 170px;
+            line-height: 1.5;
+            text-align: center;
         }
 
         #participantsCards {

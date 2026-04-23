@@ -35,6 +35,120 @@ let _dm_transcriptSeq = 0;
 let _dm_liveTranscriptByCard = {};
 let _dm_voiceAnalyzers = {};
 let _dm_lastSpeechAt = {};
+let _dm_daisTimer = null;
+let _dm_daisCurrentPid = '';
+
+// ── Conversation Bundler state ────────────────────────────────────────────────
+const _dm_convMap = {};           // studentKey → conv object
+let _dm_pendingTeacher = [];      // teacher lines not yet attached to any student card
+const _DM_CONV_TIMEOUT    = 300000; // 5 min inactivity → close (student may be listening quietly)
+const _DM_TEACHER_MAX_AGE = 120000; // 2 min — keep teacher lines available for next student turn
+
+// Teacher's own live-speech singleton card
+let _dm_teacherCardEl = null;
+
+// Transcripts captured before the WebSocket handshake completes
+let _dm_pendingTranscripts = [];
+
+// ── Teacher Speech Recognition state ─────────────────────────────────────────
+let _dm_speechRec    = null;
+let _dm_srActive     = false;
+let _dm_sttRunning   = false;
+let _dm_sttWatchdog  = null;
+
+// Noise-word filter — same logic as student side
+const _DM_NOISE_WORDS = new Set([
+    'okay','ok','yes','no','yeah','yep','nope','hmm','um','uh','ah',
+    'oh','right','sure','fine','good','great','thanks','thank you',
+    'alright','alright then','got it','i see','understood'
+]);
+function _dm_isNoisyText(text) {
+    if (!text) return true;
+    const t = text.trim().toLowerCase().replace(/[.!?,;]+$/, '');
+    if (t.length < 2) return true;
+    if (_DM_NOISE_WORDS.has(t)) return true;
+    const words = t.split(/\s+/);
+    return words.length <= 2 && words.every(w => _DM_NOISE_WORDS.has(w));
+}
+
+// Start teacher's continuous Speech Recognition
+function _dm_startSpeechRec() {
+    const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRec) return;                        // not supported in this browser
+
+    if (!_dm_speechRec) {
+        _dm_speechRec = new SpeechRec();
+        _dm_speechRec.continuous      = true;
+        _dm_speechRec.interimResults  = true;   // get interim so Chrome commits results faster
+        _dm_speechRec.lang            = 'en-US';
+        _dm_speechRec.maxAlternatives = 1;
+
+        _dm_speechRec.onresult = function(event) {
+            if (!_dm_srActive || !_dm_code) return;
+            for (let i = event.resultIndex; i < event.results.length; i++) {
+                if (event.results[i].isFinal) {
+                    const text = event.results[i][0].transcript.trim();
+                    if (text) {
+                        const payload = JSON.stringify({
+                            text:        text,
+                            speakerName: DASH_USER_NAME,
+                            isTeacher:   true,
+                            timestamp:   new Date().toISOString()
+                        });
+                        if (_dm_stomp && _dm_stomp.connected) {
+                            _dm_stomp.send('/app/transcript/' + _dm_code, {}, payload);
+                        } else {
+                            // WebSocket still connecting — buffer for flush on connect
+                            _dm_pendingTranscripts.push(payload);
+                        }
+                        console.log('[Teacher SpeechRec]', text);
+                    }
+                }
+            }
+        };
+
+        _dm_speechRec.onstart = function() {
+            _dm_sttRunning = true;
+            console.log('[Teacher STT] started');
+        };
+        _dm_speechRec.onerror = function(e) {
+            _dm_sttRunning = false;
+            console.warn('[Teacher SpeechRec] error:', e.error);
+        };
+        _dm_speechRec.onend = function() {
+            _dm_sttRunning = false;
+            if (_dm_srActive && _dm_micOn && _dm_code) {
+                try { _dm_speechRec.start(); } catch(e) {}
+            }
+        };
+    }
+
+    _dm_srActive = true;
+    if (!_dm_sttRunning) {
+        try { _dm_speechRec.start(); } catch(e) { console.warn('[Teacher STT] start error:', e.message); }
+    }
+    // Watchdog: restart teacher STT every 5 s if it silently dies
+    clearInterval(_dm_sttWatchdog);
+    _dm_sttWatchdog = setInterval(function() {
+        if (!_dm_srActive || !_dm_micOn || !_dm_code) { clearInterval(_dm_sttWatchdog); return; }
+        if (!_dm_sttRunning && _dm_speechRec) {
+            console.log('[Teacher STT Watchdog] restarting');
+            try { _dm_speechRec.start(); } catch(e) {}
+        }
+    }, 5000);
+}
+
+// Stop teacher's Speech Recognition
+function _dm_stopSpeechRec() {
+    _dm_srActive   = false;
+    _dm_sttRunning = false;
+    clearInterval(_dm_sttWatchdog);
+    _dm_sttWatchdog = null;
+    if (_dm_speechRec) {
+        try { _dm_speechRec.stop(); } catch(e) {}
+        _dm_speechRec = null;
+    }
+}
 
 // ── Public: start meeting ────────────────────────────────────────────────────
 
@@ -53,6 +167,7 @@ function initDashboardMeeting(meetingCode) {
         _dm_updateMicBtn(true);
         _dm_setupViz(stream);
         _dm_connectWS();
+        _dm_startSpeechRec(); // begin capturing teacher's speech in real-time
     })
     .catch(function (err) {
         console.warn('[DashMeeting] Mic denied:', err);
@@ -85,6 +200,9 @@ function cleanupDashboardMeeting() {
     _dm_voiceAnalyzers = {};
     _dm_lastSpeechAt = {};
 
+    _dm_stopSpeechRec(); // stop teacher's speech recognition
+    _dm_pendingTranscripts = [];
+
     if (_dm_local) { _dm_local.getTracks().forEach(t => t.stop()); _dm_local = null; }
     _dm_code = '';
 
@@ -101,6 +219,14 @@ function dashToggleMic() {
     _dm_local.getAudioTracks().forEach(t => { t.enabled = _dm_micOn; });
     _dm_updateMicBtn(_dm_micOn);
     _dm_sendParticipant('mic-toggle');
+    // Pause recognition when muted so mute-noise isn't transcribed
+    if (_dm_micOn) {
+        _dm_srActive = true;
+        try { if (_dm_speechRec) _dm_speechRec.start(); } catch(e) {}
+    } else {
+        _dm_srActive = false;
+        try { if (_dm_speechRec) _dm_speechRec.stop(); } catch(e) {}
+    }
 }
 
 // ── Public: speaker toggle ───────────────────────────────────────────────────
@@ -148,6 +274,11 @@ function _dm_connectWS() {
         _dm_stomp.subscribe('/topic/control/'     + _dm_code, m => { /* future */ });
         _dm_stomp.subscribe('/topic/recording/'   + _dm_code, m => _dm_onRecording(JSON.parse(m.body)));
         _dm_stomp.subscribe('/topic/transcript/'  + _dm_code, m => _dm_onTranscript(JSON.parse(m.body)));
+
+        // Flush any teacher transcripts captured before WS was ready
+        while (_dm_pendingTranscripts.length > 0) {
+            _dm_stomp.send('/app/transcript/' + _dm_code, {}, _dm_pendingTranscripts.shift());
+        }
 
         // Announce host presence so any waiting students will create an offer
         _dm_sendParticipant('join');
@@ -418,30 +549,73 @@ function _dm_updateCardMic(userId, micOn) {
 }
 
 function _dm_flashSpeakAlert(userId, userName) {
-    const alerts = document.getElementById('dashSpeakingAlerts');
-    const empty = document.getElementById('dashSpeakingEmpty');
-    if (!alerts) return;
-    const pid = String(userId || '');
+    const stage = document.getElementById('dashDaisStage');
+    const empty = document.getElementById('dashDaisEmpty');
+    const wave  = document.getElementById('dashDaisWave');
+    if (!stage) return;
+
+    const pid   = String(userId || '');
     const label = (userName || _dm_getParticipantName(pid) || 'Student').trim();
-    if (empty) empty.style.display = 'none';
-    const prev = pid ? alerts.querySelector('.dm-speaking-chip[data-alert-pid="' + pid + '"]') : null;
-    if (prev) prev.remove();
-    const chip = document.createElement('div');
-    chip.className = 'dm-speaking-chip';
-    if (pid) chip.dataset.alertPid = pid;
-    chip.innerHTML =
-        '<div class="dm-speaking-chip-avatar">' + _dmEsc(_dmInitials(label)) + '</div>' +
-        '<div class="dm-speaking-chip-name">' + _dmEsc(label) + '</div>' +
-        '<div class="dm-speaking-chip-dots">' +
-            '<span class="dm-speaking-chip-dot active"></span>' +
-            '<span class="dm-speaking-chip-dot mid"></span>' +
-            '<span class="dm-speaking-chip-dot"></span>' +
-        '</div>';
-    alerts.appendChild(chip);
-    setTimeout(() => {
-        if (chip && chip.parentElement) chip.remove();
-        if (empty && !alerts.querySelector('.dm-speaking-chip')) empty.style.display = '';
-    }, 1700);
+
+    // Reset the auto-hide timer on every new speech event
+    if (_dm_daisTimer) {
+        clearTimeout(_dm_daisTimer);
+        _dm_daisTimer = null;
+    }
+
+    // Activate the wave equaliser in the header
+    if (wave) wave.classList.add('active');
+
+    // Reuse or create the Dais card
+    let card = stage.querySelector('.dm-dais-card');
+    if (!card) {
+        if (empty) empty.style.display = 'none';
+        card = document.createElement('div');
+        card.className = 'dm-dais-card';
+        card.innerHTML =
+            '<div class="dm-dais-avatar">' + _dmEsc(_dmInitials(label)) + '</div>' +
+            '<div class="dm-dais-name">' + _dmEsc(label) + '</div>' +
+            '<div class="dm-dais-status">' +
+                '<div class="dm-dais-live-dot"></div>' +
+                '<span>Speaking</span>' +
+            '</div>' +
+            '<div class="dm-dais-bars">' +
+                '<div class="dm-dais-bar"></div>' +
+                '<div class="dm-dais-bar"></div>' +
+                '<div class="dm-dais-bar"></div>' +
+                '<div class="dm-dais-bar"></div>' +
+                '<div class="dm-dais-bar"></div>' +
+            '</div>';
+        if (pid) card.dataset.daisPid = pid;
+        stage.appendChild(card);
+    } else if (_dm_daisCurrentPid !== pid) {
+        // Different student stepped onto the Dais — update content
+        const avatarEl = card.querySelector('.dm-dais-avatar');
+        const nameEl   = card.querySelector('.dm-dais-name');
+        if (avatarEl) avatarEl.textContent = _dmInitials(label);
+        if (nameEl)   nameEl.textContent   = label;
+        if (pid) card.dataset.daisPid = pid;
+        // Re-trigger entrance animation
+        card.style.animation = 'none';
+        void card.offsetHeight;
+        card.style.animation = '';
+    }
+    _dm_daisCurrentPid = pid;
+
+    // After 3.5 s of silence, fade the card out and restore empty state
+    _dm_daisTimer = setTimeout(() => {
+        const c = stage.querySelector('.dm-dais-card');
+        if (c) {
+            c.style.transition = 'opacity 0.4s ease, transform 0.4s ease';
+            c.style.opacity    = '0';
+            c.style.transform  = 'scale(0.85) translateY(8px)';
+            setTimeout(() => { if (c.parentElement) c.remove(); }, 420);
+        }
+        setTimeout(() => { if (empty) empty.style.display = ''; }, 420);
+        if (wave) wave.classList.remove('active');
+        _dm_daisCurrentPid = '';
+        _dm_daisTimer = null;
+    }, 3500);
 }
 
 function _dm_flashSpeakBlipBySpeaker(data) {
@@ -521,12 +695,23 @@ function _dm_clearParticipants() {
     area.querySelectorAll('[data-pid]').forEach(el => el.remove());
     const placeholder = area.querySelector('.no-participants');
     if (placeholder) placeholder.style.display = '';
-    const alerts = document.getElementById('dashSpeakingAlerts');
-    const empty = document.getElementById('dashSpeakingEmpty');
-    if (alerts) alerts.querySelectorAll('.dm-speaking-chip').forEach(el => el.remove());
-    if (empty) empty.style.display = '';
     const cnt = document.getElementById('meetingOnline');
     if (cnt) cnt.textContent = '0';
+
+    // Clear Dais
+    if (_dm_daisTimer) { clearTimeout(_dm_daisTimer); _dm_daisTimer = null; }
+    _dm_daisCurrentPid = '';
+    const stage = document.getElementById('dashDaisStage');
+    if (stage) stage.querySelectorAll('.dm-dais-card').forEach(el => el.remove());
+    const daisEmpty = document.getElementById('dashDaisEmpty');
+    if (daisEmpty) daisEmpty.style.display = '';
+    const wave = document.getElementById('dashDaisWave');
+    if (wave) wave.classList.remove('active');
+
+    // Close all active conversations (cards stay visible for review)
+    Object.keys(_dm_convMap).forEach(k => _dm_closeConv(k));
+    _dm_pendingTeacher = [];
+    _dm_clearTeacherCard();
 }
 
 function _dm_getParticipantName(userId) {
@@ -598,69 +783,214 @@ function _dm_onRecording(data) {
     _dmShowToast('🎙️ New Clip', name + ' saved an audio clip' + dur, '#6366f1');
 }
 
-function _dm_onTranscript(data) {
-    if (!data || !data.success || !data.text) return;
-    _dm_flashSpeakBlipBySpeaker(data);
-    const list = document.getElementById('dashLiveTranscriptList');
+// ── Conversation bundler helpers ──────────────────────────────────────────────
+
+function _dm_convKey(userId, fallbackName) {
+    return userId ? ('u' + userId) : ('n' + (fallbackName || 'anon').toLowerCase().replace(/\W+/g, '_'));
+}
+
+function _dm_getOrCreateConv(userId, userName) {
+    const key = _dm_convKey(userId, userName);
+    if (_dm_convMap[key]) {
+        clearTimeout(_dm_convMap[key].timer);
+        _dm_convMap[key].timer = setTimeout(() => _dm_closeConv(key), _DM_CONV_TIMEOUT);
+        return _dm_convMap[key];
+    }
+    const cardId = 'conv-' + key + '-' + Date.now();
+    const conv = { key, studentName: userName, userId, lines: [], cardId, timer: null };
+    _dm_convMap[key] = conv;
+    _dm_buildConvCard(conv);
+    conv.timer = setTimeout(() => _dm_closeConv(key), _DM_CONV_TIMEOUT);
+    return conv;
+}
+
+function _dm_closeConv(key) {
+    if (_dm_convMap[key]) {
+        clearTimeout(_dm_convMap[key].timer);
+        delete _dm_convMap[key];
+    }
+}
+
+function _dm_buildConvCard(conv) {
+    const list  = document.getElementById('dashLiveTranscriptList');
     const empty = document.getElementById('dashLiveTranscriptEmpty');
     if (!list) return;
     if (empty) empty.style.display = 'none';
-
-    const cardId = 'dash-tx-' + (++_dm_transcriptSeq);
     const card = document.createElement('div');
-    card.id = cardId;
-    card.className = 'mcp-card';
+    card.id        = conv.cardId;
+    card.className = 'conv-card';
     card.innerHTML =
-        '<div class="mcp-speaker"><i class="fas fa-microphone"></i> ' + _dmEsc(data.speakerName || data.userName || 'Unknown') + '</div>' +
-        '<div class="mcp-text">' + _dmEsc(data.text) + '</div>' +
-        '<button class="mcp-ok-btn" onclick="_dm_archiveTranscript(\'' + cardId + '\')"><i class="fas fa-check"></i> Okay</button>';
+        '<div class="conv-card-header">' +
+            '<div class="conv-card-avatar">' + _dmEsc(_dmInitials(conv.studentName)) + '</div>' +
+            '<div class="conv-card-title">' +
+                '<div class="conv-card-name">' + _dmEsc(conv.studentName) + '</div>' +
+                '<div class="conv-card-sub">Live conversation</div>' +
+            '</div>' +
+            '<button class="conv-ok-btn" onclick="_dm_archiveConvCard(\'' + conv.cardId + '\')">' +
+                '<i class="fas fa-check"></i> Done' +
+            '</button>' +
+        '</div>' +
+        '<div class="conv-lines" id="lines-' + conv.cardId + '"></div>';
     list.appendChild(card);
-    _dm_liveTranscriptByCard[cardId] = {
-        id: data.transcriptId || Date.now(),
-        content: data.text,
-        speakerName: data.speakerName || data.userName || 'Unknown',
-        studentName: data.userName || data.speakerName || 'Unknown',
-        recordingId: data.recordingId || null,
-        startTime: data.startTime || 0,
-        endTime: data.endTime || 0,
-        createdAt: data.timestamp || new Date().toISOString()
-    };
+    _dm_scrollTranscripts();
 }
 
-function _dm_archiveTranscript(cardId) {
+function _dm_appendLine(conv, role, name, text) {
+    conv.lines.push({ role, name, text });
+    const linesEl = document.getElementById('lines-' + conv.cardId);
+    if (!linesEl) return;
+    const div = document.createElement('div');
+    div.className = 'conv-line ' + (role === 'teacher' ? 'conv-line-teacher' : 'conv-line-student');
+    div.innerHTML =
+        '<span class="conv-line-icon"><i class="fas ' +
+            (role === 'teacher' ? 'fa-chalkboard-teacher' : 'fa-user-graduate') + '"></i></span>' +
+        '<span class="conv-line-name">' + _dmEsc(name) + '</span>' +
+        '<span class="conv-line-text">' + _dmEsc(text) + '</span>';
+    linesEl.appendChild(div);
+    _dm_scrollTranscripts();
+}
+
+function _dm_scrollTranscripts() {
+    const scroll = document.getElementById('mcpLiveScroll');
+    if (scroll) scroll.scrollTop = scroll.scrollHeight;
+}
+
+function _dm_archiveConvCard(cardId) {
+    // Find conv by cardId
+    const key  = Object.keys(_dm_convMap).find(k => _dm_convMap[k].cardId === cardId);
+    const conv = key ? _dm_convMap[key] : null;
     const card = document.getElementById(cardId);
-    const liveList = document.getElementById('dashLiveTranscriptList');
+    const liveList  = document.getElementById('dashLiveTranscriptList');
     const liveEmpty = document.getElementById('dashLiveTranscriptEmpty');
-    if (!card || !liveList) return;
 
-    card.remove();
-
-    if (!liveList.querySelector('.mcp-card') && liveEmpty) {
+    if (card) card.remove();
+    if (liveList && !liveList.querySelector('.conv-card, .mcp-card') && liveEmpty) {
         liveEmpty.style.display = '';
     }
 
-    const transcriptItem = _dm_liveTranscriptByCard[cardId];
-    if (transcriptItem) {
+    // Archive as bundled entry in allTranscripts for the Transcripts tab
+    if (conv && conv.lines.length > 0) {
+        const fullText = conv.lines.map(l => l.name + ': ' + l.text).join('\n');
         if (Array.isArray(window.allTranscripts)) {
-            const exists = window.allTranscripts.some(t => String(t.id) === String(transcriptItem.id));
+            const exists = window.allTranscripts.some(t => t.convCardId === cardId);
             if (!exists) {
-                window.allTranscripts.unshift(transcriptItem);
+                window.allTranscripts.unshift({
+                    id: Date.now(),
+                    convCardId: cardId,
+                    content: fullText,
+                    speakerName: conv.studentName + ' ↔ Teacher',
+                    studentName: conv.studentName,
+                    createdAt: new Date().toISOString()
+                });
             }
-            if (typeof renderTranscripts === 'function') {
-                renderTranscripts(window.allTranscripts);
-            }
+            if (typeof renderTranscripts === 'function') renderTranscripts(window.allTranscripts);
         }
-        delete _dm_liveTranscriptByCard[cardId];
+        if (key) _dm_closeConv(key);
     }
+    if (typeof loadTranscripts === 'function') loadTranscripts();
+    if (typeof refreshRecordingsAjax === 'function') refreshRecordingsAjax();
+    _dmShowToast('Saved', 'Conversation moved to Transcripts tab', '#22c55e');
+}
 
-    // Refresh transcript and recordings tabs so transcript is visible immediately.
-    if (typeof loadTranscripts === 'function') {
-        loadTranscripts();
+// Kept for backward compat (flat mcp-cards from earlier in session)
+function _dm_archiveTranscript(cardId) {
+    _dm_archiveConvCard(cardId);
+}
+
+// ── Teacher live-speech card (always visible when teacher speaks) ─────────────
+
+function _dm_ensureTeacherCard() {
+    if (_dm_teacherCardEl && document.contains(_dm_teacherCardEl)) return;
+    const list  = document.getElementById('dashLiveTranscriptList');
+    const empty = document.getElementById('dashLiveTranscriptEmpty');
+    if (!list) return;
+    if (empty) empty.style.display = 'none';
+    const card = document.createElement('div');
+    card.id        = 'conv-teacher-live';
+    card.className = 'conv-card conv-card-teacher-live';
+    card.innerHTML =
+        '<div class="conv-card-header">' +
+            '<div class="conv-card-avatar" style="background:linear-gradient(135deg,#6366f1,#8b5cf6);">T</div>' +
+            '<div class="conv-card-title">' +
+                '<div class="conv-card-name">Your Live Speech</div>' +
+                '<div class="conv-card-sub">Real-time teacher transcription</div>' +
+            '</div>' +
+            '<button class="conv-ok-btn" style="background:linear-gradient(135deg,#64748b,#475569);" ' +
+                'onclick="_dm_clearTeacherCard()">' +
+                '<i class="fas fa-trash-alt"></i> Clear' +
+            '</button>' +
+        '</div>' +
+        '<div class="conv-lines" id="lines-teacher-live"></div>';
+    list.insertBefore(card, list.firstChild);
+    _dm_teacherCardEl = card;
+}
+
+function _dm_showTeacherLine(name, text) {
+    _dm_ensureTeacherCard();
+    const linesEl = document.getElementById('lines-teacher-live');
+    if (!linesEl) return;
+    const div = document.createElement('div');
+    div.className = 'conv-line conv-line-teacher';
+    div.innerHTML =
+        '<span class="conv-line-icon"><i class="fas fa-chalkboard-teacher"></i></span>' +
+        '<span class="conv-line-name">' + _dmEsc(name) + '</span>' +
+        '<span class="conv-line-text">' + _dmEsc(text) + '</span>';
+    linesEl.appendChild(div);
+    // Cap the card at 12 most-recent lines to prevent overflow
+    const all = linesEl.querySelectorAll('.conv-line');
+    if (all.length > 12) all[0].remove();
+    _dm_scrollTranscripts();
+}
+
+function _dm_clearTeacherCard() {
+    if (_dm_teacherCardEl) { _dm_teacherCardEl.remove(); _dm_teacherCardEl = null; }
+    const liveList  = document.getElementById('dashLiveTranscriptList');
+    const liveEmpty = document.getElementById('dashLiveTranscriptEmpty');
+    if (liveList && !liveList.querySelector('.conv-card, .mcp-card') && liveEmpty) {
+        liveEmpty.style.display = '';
     }
-    if (typeof refreshRecordingsAjax === 'function') {
-        refreshRecordingsAjax();
+}
+
+// ── Main transcript handler ───────────────────────────────────────────────────
+
+function _dm_onTranscript(data) {
+    // Accept messages that have text, regardless of whether 'success' is set
+    if (!data || !data.text) return;
+    if (data.success === false) return; // explicit server error — skip
+    _dm_flashSpeakBlipBySpeaker(data);
+
+    const text        = data.text.trim();
+    if (!text) return;
+    const isTeacher   = data.isTeacher === true;
+    const speakerName = (data.speakerName || data.userName || 'Unknown').trim();
+    const userId      = String(data.userId || '');
+
+    if (isTeacher) {
+        // ── Teacher spoke ───────────────────────────────────────────────────
+        // 1. Show immediately in the teacher's own live-speech card
+        _dm_showTeacherLine(speakerName, text);
+
+        // 2. Buffer so it can be prepended to a new student card
+        _dm_pendingTeacher.push({ name: speakerName, text, at: Date.now() });
+        if (_dm_pendingTeacher.length > 30) _dm_pendingTeacher.shift(); // keep last 30 teacher lines
+
+        // 3. Also append live to ALL currently open student conversation cards
+        Object.values(_dm_convMap).forEach(conv => _dm_appendLine(conv, 'teacher', speakerName, text));
+
+    } else {
+        // ── Student spoke ───────────────────────────────────────────────────
+        const conv = _dm_getOrCreateConv(userId, speakerName);
+
+        // For a brand-new card: prepend recent pending teacher lines (≤ 20 s old)
+        if (conv.lines.length === 0) {
+            const now    = Date.now();
+            const recent = _dm_pendingTeacher.filter(l => now - l.at < _DM_TEACHER_MAX_AGE);
+            recent.forEach(tl => _dm_appendLine(conv, 'teacher', tl.name, tl.text));
+            _dm_pendingTeacher = []; // consumed — clear buffer
+        }
+
+        _dm_appendLine(conv, 'student', speakerName, text);
     }
-    _dmShowToast('Moved', 'Transcript moved to Transcripts tab', '#22c55e');
 }
 
 function _dmShowToast(title, msg, color) {
