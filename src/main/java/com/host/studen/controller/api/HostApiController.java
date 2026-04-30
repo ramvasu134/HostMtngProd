@@ -599,6 +599,8 @@ public class HostApiController {
     public ResponseEntity<?> whatsappNotificationStatus(@AuthenticationPrincipal CustomUserDetails userDetails) {
         try {
             Long teacherId = userDetails.getUserId();
+            User teacher = userService.findById(teacherId)
+                    .orElseThrow(() -> new RuntimeException("Teacher not found"));
             DateTimeFormatter ts = DateTimeFormatter.ofPattern("dd MMM yyyy, HH:mm:ss");
             List<Map<String, Object>> rows = whatsAppNotificationService.getRecentStatuses(teacherId).stream()
                     .map(s -> {
@@ -616,10 +618,19 @@ public class HostApiController {
                         return r;
                     })
                     .collect(Collectors.toList());
+            boolean teacherHasApiKey = teacher.getWhatsappApiKey() != null && !teacher.getWhatsappApiKey().isBlank();
+            boolean teacherHasNumber = teacher.getWhatsappNumber() != null && !teacher.getWhatsappNumber().isBlank();
+            boolean globallyEnabled = whatsAppNotificationService.isMasterEnabled();
+            boolean twilioReady = whatsAppNotificationService.isTwilioReady();
+            boolean providerAvailable = globallyEnabled && (twilioReady || teacherHasApiKey);
             return ResponseEntity.ok(Map.of(
                     "success", true,
                     "statuses", rows,
-                    "twilioReady", whatsAppNotificationService.isTwilioReady()
+                    "twilioReady", twilioReady,
+                    "globallyEnabled", globallyEnabled,
+                    "teacherHasApiKey", teacherHasApiKey,
+                    "teacherHasNumber", teacherHasNumber,
+                    "providerAvailable", providerAvailable
             ));
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(Map.of("success", false, "message", e.getMessage()));

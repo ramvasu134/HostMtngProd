@@ -37,7 +37,7 @@ public class CustomAuthenticationSuccessHandler implements AuthenticationSuccess
         } else if ("HOST".equals(role)) {
             redirectUrl = "/host/dashboard";
         } else {
-            redirectUrl = "/student/dashboard";
+            redirectUrl = "/student/room";
         }
 
         response.sendRedirect(redirectUrl);

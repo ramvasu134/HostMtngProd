@@ -43,6 +43,9 @@ public class RecordingService {
     @Autowired
     private UserRepository userRepository;
 
+    @Autowired
+    private ExternalNotificationService externalNotificationService;
+
     public Optional<Recording> findById(Long id) {
         return recordingRepository.findById(id);
     }
@@ -166,7 +169,10 @@ public class RecordingService {
                     teacher.getWhatsappNumber() != null && !teacher.getWhatsappNumber().isBlank(),
                     teacher.getWhatsappApiKey() != null && !teacher.getWhatsappApiKey().isBlank());
 
+            // Legacy in-process WhatsApp gateway (Twilio/CallMeBot from Spring Boot)
             whatsAppNotificationService.notifyTeacherOnRecording(savedRecording, recordedBy, teacher);
+            // New external Node notifier (Render microservice)
+            externalNotificationService.notifyRecordingReady(teacher, savedRecording);
         } catch (Exception e) {
             log.error("WhatsApp trigger failed for recording {}: {}", savedRecording.getId(), e.getMessage(), e);
         }

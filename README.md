@@ -19,6 +19,13 @@ A real-time video meeting platform for teachers (hosts) and students, built with
 4. Click **Apply** — Render creates the PostgreSQL database and web service for you.
 5. ✅ Done. Visit the service URL once the build finishes (~5 min on first deploy).
 
+### Included Services in `render.yaml`
+
+- `host-student-meeting` (Spring Boot app)
+- `notification-service` (Node.js WhatsApp notifier)
+
+The notifier exposes `POST /notify` and `GET /health`, and is configured to run as a separate Render web service on port `3000`.
+
 ### Option B — Manual Deploy
 
 1. **Create a PostgreSQL database** on Render → note the internal connection details.

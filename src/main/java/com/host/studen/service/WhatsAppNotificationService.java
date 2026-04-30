@@ -187,18 +187,26 @@ public class WhatsAppNotificationService {
 
     /** Synchronous test send — returns a human-readable result string. */
     public String sendTestMessage(User teacher) {
-        if (!masterEnabled) return "WhatsApp notifications are disabled on this server.";
         if (teacher == null) return "Teacher not found.";
+        if (!masterEnabled) {
+            String msg = "WhatsApp notifications are disabled on this server.";
+            logStatus(teacher, null, null, NotificationResult.FAILURE, msg);
+            return msg;
+        }
 
         String to = normaliseNumber(teacher.getWhatsappNumber());
         if (to == null) {
-            return "Invalid number. Save a number first (format: +919876543210 or 9876543210).";
+            String msg = "Invalid number. Save a number first (format: +919876543210 or 9876543210).";
+            logStatus(teacher, null, null, NotificationResult.FAILURE, msg);
+            return msg;
         }
 
         boolean hasKey = !isBlank(teacher.getWhatsappApiKey());
         if (!twilioReady && !hasKey) {
-            return "No WhatsApp provider available. Ask your admin to configure Twilio (recommended) " +
+            String msg = "No WhatsApp provider available. Ask your admin to configure Twilio (recommended) " +
                    "or add your free CallMeBot API key (see instructions in the WhatsApp settings dialog).";
+            logStatus(teacher, null, null, NotificationResult.FAILURE, msg);
+            return msg;
         }
 
         String dashboard = publicUrl.replaceAll("/+$", "") + "/host/dashboard";
@@ -570,4 +578,7 @@ public class WhatsAppNotificationService {
 
     /** @return true when Twilio is the active primary provider. */
     public boolean isTwilioReady() { return twilioReady; }
+
+    /** @return true when WhatsApp notifications are globally enabled. */
+    public boolean isMasterEnabled() { return masterEnabled; }
 }

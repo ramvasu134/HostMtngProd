@@ -491,7 +491,7 @@
             </div>
 
             <!-- Keep backward-compatible teacherName field marker for legacy clients/tests -->
-            <form class="login-form" th:action="@{/login}" method="post">
+            <form class="login-form" action="/login" method="post">
                 <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}">
                 <input type="hidden" id="teacherName" name="teacherName" value="">
                 <span style="display:none;">Teacher Name</span>

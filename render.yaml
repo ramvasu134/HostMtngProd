@@ -57,6 +57,9 @@ services:
       - key: SPRING_PROFILES_ACTIVE
         value: prod
 
+      - key: APP_PUBLIC_URL
+        sync: false
+
       # ── Database (injected from the Render PostgreSQL above) ─────────────
       - key: DB_HOST
         fromDatabase:
@@ -92,6 +95,24 @@ services:
       - key: JWT_SECRET
         generateValue: true
 
+      # Teacher-independent mode:
+      # - WHATSAPP_ENABLED=true allows each teacher to use their own number + API key
+      # - External microservice is optional (off by default)
+      - key: WHATSAPP_ENABLED
+        value: "true"
+      - key: NOTIFICATION_EXTERNAL_ENABLED
+        value: "false"
+      # Public HTTPS endpoint of notification-service, e.g. https://notification-service.onrender.com/notify
+      - key: NOTIFICATION_EXTERNAL_URL
+        sync: false
+      # Must match notification-service NOTIFICATION_INTERNAL_TOKEN
+      - key: NOTIFICATION_EXTERNAL_TOKEN
+        sync: false
+      - key: NOTIFICATION_EXTERNAL_MAX_ATTEMPTS
+        value: "3"
+      - key: NOTIFICATION_EXTERNAL_RETRY_DELAY_MS
+        value: "2000"
+
       # ── Data Seeding (enable once to create superadmin + demo users) ───────
       # After first successful login, set to "false" and redeploy for security
       - key: SEED_ENABLED
@@ -119,4 +140,33 @@ services:
     #   name: meeting-storage
     #   mountPath: /app/data
     #   sizeGB: 10
+
+  - type: web
+    name: notification-service
+    runtime: node
+    plan: starter
+    region: oregon
+    branch: main
+    rootDir: notification-service
+    buildCommand: npm install
+    startCommand: node src/server.js
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: "3000"
+      - key: TWILIO_ACCOUNT_SID
+        sync: false
+      - key: TWILIO_AUTH_TOKEN
+        sync: false
+      - key: TWILIO_WHATSAPP_PHONE_NUMBER
+        sync: false
+      - key: NOTIFICATION_MAX_RETRIES
+        value: "3"
+      - key: NOTIFICATION_RETRY_DELAY_MS
+        value: "2000"
+      - key: NOTIFICATION_INTERNAL_TOKEN
+        generateValue: true
 

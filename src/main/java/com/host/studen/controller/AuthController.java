@@ -40,7 +40,7 @@ public class AuthController {
             } else if ("HOST".equals(role)) {
                 return "redirect:/host/dashboard";
             } else {
-                return "redirect:/student/dashboard";
+                return "redirect:/student/room";
             }
         }
         return "redirect:/login";
@@ -58,7 +58,7 @@ public class AuthController {
             } else if ("HOST".equals(role)) {
                 return "redirect:/host/dashboard";
             }
-            return "redirect:/student/dashboard";
+            return "redirect:/student/room";
         }
 
         if (error != null) {
