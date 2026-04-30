@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html xmlns:th="http://www.thymeleaf.org" lang="en">
 <head>
     <meta charset="UTF-8">
@@ -424,6 +424,7 @@
             .main-content { margin-left: 0; }
         }
     </style>
+    <script src="/js/capacitor-bridge.js" defer></script>
 </head>
 <body>
     <aside class="sidebar">
@@ -663,10 +664,10 @@
         function getShareMessage() {
             const appUrl = window.location.origin;
             const passwordLine = currentTeacher.hasPassword
-                ? `🔑 *Password:* ${currentTeacher.password}`
-                : `🔑 *Password:* (Please ask admin for password)`;
+                ? `ðŸ”‘ *Password:* ${currentTeacher.password}`
+                : `ðŸ”‘ *Password:* (Please ask admin for password)`;
 
-            return `🎓 *Teacher Login Credentials*\n\n📱 *App URL:* ${appUrl}/login\n\n👤 *Teacher Name:* ${currentTeacher.name}\n🏫 *Teacher Code:* ${currentTeacher.code}\n👤 *Username:* ${currentTeacher.username}\n${passwordLine}\n\n_Please login using the above credentials._`;
+            return `ðŸŽ“ *Teacher Login Credentials*\n\nðŸ“± *App URL:* ${appUrl}/login\n\nðŸ‘¤ *Teacher Name:* ${currentTeacher.name}\nðŸ« *Teacher Code:* ${currentTeacher.code}\nðŸ‘¤ *Username:* ${currentTeacher.username}\n${passwordLine}\n\n_Please login using the above credentials._`;
         }
 
         function shareViaWhatsApp() {

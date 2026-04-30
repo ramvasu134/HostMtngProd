@@ -13,7 +13,11 @@ import org.springframework.security.config.annotation.method.configuration.Enabl
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 import org.springframework.security.web.header.writers.XXssProtectionHeaderWriter;
+import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.cors.CorsConfigurationSource;
 
 import java.util.Arrays;
 
@@ -34,6 +38,9 @@ public class SecurityConfig {
     @Autowired
     private Environment environment;
 
+    @Autowired
+    private CorsConfigurationSource corsConfigurationSource;
+
     @Bean
     public AuthenticationManager authenticationManager(HttpSecurity http) throws Exception {
         AuthenticationManagerBuilder authenticationManagerBuilder =
@@ -49,6 +56,9 @@ public class SecurityConfig {
         boolean isDevProfile = Arrays.asList(environment.getActiveProfiles()).contains("dev");
         
         http
+            // Enable CORS so the wrapped Capacitor mobile app (origin:
+            // capacitor://localhost or http://localhost) can call /api/** + /ws/**
+            .cors(cors -> cors.configurationSource(corsConfigurationSource))
             .csrf(csrf -> csrf
                 // CSRF protection disabled for API and WebSocket endpoints
                 // WebSocket uses its own STOMP-level authentication
@@ -66,6 +76,8 @@ public class SecurityConfig {
                 .requestMatchers("/actuator/**").authenticated()
                 // Auth API public
                 .requestMatchers("/api/auth/**").permitAll()
+                // Twilio status-callback webhook — public, signature-verified inside the controller
+                .requestMatchers("/api/whatsapp/twilio-callback").permitAll()
                 // Role-based access
                 .requestMatchers("/admin/**").hasRole("ADMIN")
                 .requestMatchers("/host/**").hasRole("HOST")
@@ -83,6 +95,14 @@ public class SecurityConfig {
                 .failureUrl("/login?error=true")
                 .permitAll()
             )
+            // For unauthenticated AJAX calls to /api/** return a clean JSON-friendly
+            // 401 instead of a 302 redirect to /login. This stops the teacher
+            // dashboard from showing "Failed to load status log" when a session
+            // silently expires — the JS now sees status 401 and can react properly.
+            .exceptionHandling(eh -> eh.defaultAuthenticationEntryPointFor(
+                    new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED),
+                    new AntPathRequestMatcher("/api/**")
+            ))
             .logout(logout -> logout
                 .logoutUrl("/logout")
                 .logoutSuccessUrl("/login?logout=true")

@@ -26,15 +26,24 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     @Override
     public void registerStompEndpoints(StompEndpointRegistry registry) {
         var endpoint = registry.addEndpoint("/ws");
-        
-        // Security: Restrict CORS origins based on configuration
+
+        // Default origins always allowed — covers local browser dev AND the
+        // Capacitor mobile WebView (capacitor://localhost on iOS, http://localhost
+        // on Android). Custom domains are appended via app.websocket.allowed-origins.
+        java.util.List<String> origins = new java.util.ArrayList<>(java.util.List.of(
+                "http://localhost:*",
+                "https://localhost:*",
+                "capacitor://localhost",
+                "ionic://localhost"
+        ));
         if (allowedOrigins != null && !allowedOrigins.isBlank()) {
-            endpoint.setAllowedOriginPatterns(allowedOrigins.split(","));
-        } else {
-            // Default: Allow same-origin requests only (no explicit pattern = same-origin)
-            endpoint.setAllowedOriginPatterns("http://localhost:*", "https://localhost:*");
+            for (String o : allowedOrigins.split(",")) {
+                String trimmed = o.trim();
+                if (!trimmed.isEmpty()) origins.add(trimmed);
+            }
         }
-        
+        endpoint.setAllowedOriginPatterns(origins.toArray(new String[0]));
+
         endpoint.withSockJS();
     }
 }

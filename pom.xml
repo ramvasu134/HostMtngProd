@@ -116,6 +116,19 @@
 		<version>2.16.1</version>
 	</dependency>
 
+	<!-- Twilio SDK — WhatsApp Business API for recording notifications -->
+	<dependency>
+		<groupId>com.twilio.sdk</groupId>
+		<artifactId>twilio</artifactId>
+		<version>10.6.4</version>
+	</dependency>
+
+	<!-- Apache Commons Lang for language utilities -->
+	<dependency>
+		<groupId>org.apache.commons</groupId>
+		<artifactId>commons-lang3</artifactId>
+		<version>3.14.0</version>
+	</dependency>
 
 	<!-- DevTools -->
 		<dependency>

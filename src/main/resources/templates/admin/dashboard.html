@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html xmlns:th="http://www.thymeleaf.org" lang="en">
 <head>
     <meta charset="UTF-8">
@@ -628,6 +628,7 @@
             }
         }
     </style>
+    <script src="/js/capacitor-bridge.js" defer></script>
 </head>
 <body>
     <!-- Sidebar -->
@@ -964,16 +965,16 @@
         function getShareMessage() {
             const appUrl = window.location.origin;
             const passwordLine = currentTeacher.hasPassword
-                ? `🔑 *Password:* ${currentTeacher.password}`
-                : `🔑 *Password:* (Please ask admin for password)`;
+                ? `ðŸ”‘ *Password:* ${currentTeacher.password}`
+                : `ðŸ”‘ *Password:* (Please ask admin for password)`;
 
-            return `🎓 *Teacher Login Credentials*
+            return `ðŸŽ“ *Teacher Login Credentials*
 
-📱 *App URL:* ${appUrl}/login
+ðŸ“± *App URL:* ${appUrl}/login
 
-👤 *Teacher Name:* ${currentTeacher.name}
-🏫 *Teacher Code:* ${currentTeacher.code}
-👤 *Username:* ${currentTeacher.username}
+ðŸ‘¤ *Teacher Name:* ${currentTeacher.name}
+ðŸ« *Teacher Code:* ${currentTeacher.code}
+ðŸ‘¤ *Username:* ${currentTeacher.username}
 ${passwordLine}
 
 _Please login using the above credentials to access your Host Mtng dashboard._`;

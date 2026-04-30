@@ -1,0 +1,31 @@
+{
+  "appId": "com.vk.meetinghost",
+  "appName": "Host Mtng",
+  "webDir": "www",
+  "bundledWebRuntime": false,
+  "server": {
+    "url": "https://hoststudentmeeting.onrender.com",
+    "cleartext": false,
+    "androidScheme": "https",
+    "iosScheme": "https",
+    "allowNavigation": [
+      "*.onrender.com",
+      "api.callmebot.com",
+      "api.mymemory.translated.net"
+    ]
+  },
+  "android": {
+    "allowMixedContent": false,
+    "captureInput": true,
+    "webContentsDebuggingEnabled": false
+  },
+  "ios": {
+    "contentInset": "always",
+    "limitsNavigationsToAppBoundDomains": false
+  },
+  "plugins": {
+    "App": {
+      "launchUrl": ""
+    }
+  }
+}

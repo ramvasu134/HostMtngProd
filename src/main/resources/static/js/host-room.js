@@ -52,8 +52,19 @@ function _seedStudentStripFromDOM() {
 }
 
 // ===== Audio — get mic FIRST, then connect WebSocket =====
+// 16 kHz mono + full DSP boosts multilingual STT accuracy noticeably.
 function initAudio() {
-    navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true }, video: false })
+    navigator.mediaDevices.getUserMedia({
+        audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+            channelCount: 1,
+            sampleRate: 16000,
+            sampleSize: 16
+        },
+        video: false
+    })
         .then(function (stream) {
             localStream = stream;
             updateMicUI(true);
@@ -703,7 +714,122 @@ function copyMeetingCode() {
 }
 
 function toggleSettings() {
-    alert('Settings coming soon');
+    const modal = document.getElementById('settingsModal');
+    const overlay = document.getElementById('settingsOverlay');
+    modal.classList.add('show');
+    overlay.style.display = 'block';
+    loadSettingsData();
+}
+
+function closeSettings() {
+    const modal = document.getElementById('settingsModal');
+    const overlay = document.getElementById('settingsOverlay');
+    modal.classList.remove('show');
+    overlay.style.display = 'none';
+    document.getElementById('settingsMessage').style.display = 'none';
+}
+
+function loadSettingsData() {
+    fetch('/api/host/whatsapp-settings', {
+        method: 'GET',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' }
+    })
+    .then(r => r.json())
+    .then(data => {
+        document.getElementById('whatsappNumber').value = data.whatsappNumber || '';
+        document.getElementById('whatsappEnabled').checked = data.whatsappNotificationsEnabled || false;
+    })
+    .catch(err => {
+        console.error('Error loading settings:', err);
+        showSettingsMessage('Failed to load settings', 'error');
+    });
+}
+
+function saveSettings() {
+    const btn = document.getElementById('btnSaveSettings');
+    const originalText = btn.innerHTML;
+    btn.disabled = true;
+
+    const whatsappNumber = document.getElementById('whatsappNumber').value.trim();
+    const whatsappEnabled = document.getElementById('whatsappEnabled').checked;
+
+    const payload = {
+        whatsappNumber: whatsappNumber,
+        whatsappNotificationsEnabled: whatsappEnabled
+    };
+
+    fetch('/api/host/whatsapp-settings', {
+        method: 'PUT',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            showSettingsMessage('✓ Settings saved successfully', 'success');
+            btn.innerHTML = '<i class="fas fa-check"></i> Saved';
+            setTimeout(() => {
+                btn.innerHTML = originalText;
+                btn.disabled = false;
+            }, 2000);
+        } else {
+            showSettingsMessage(data.message || 'Error saving settings', 'error');
+            btn.disabled = false;
+        }
+    })
+    .catch(err => {
+        console.error('Error saving settings:', err);
+        showSettingsMessage('Error saving settings: ' + err.message, 'error');
+        btn.disabled = false;
+    });
+}
+
+function sendTestMessage() {
+    const btn = document.getElementById('btnSendTest');
+    const originalText = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sending...';
+
+    fetch('/api/host/whatsapp-settings/test', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' }
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            showSettingsMessage('✓ ' + data.message, 'success');
+            btn.innerHTML = '<i class="fas fa-check"></i> Sent';
+            setTimeout(() => {
+                btn.innerHTML = originalText;
+                btn.disabled = false;
+            }, 3000);
+        } else {
+            showSettingsMessage(data.message || 'Error sending test message', 'error');
+            btn.innerHTML = originalText;
+            btn.disabled = false;
+        }
+    })
+    .catch(err => {
+        console.error('Error sending test:', err);
+        showSettingsMessage('Error: ' + err.message, 'error');
+        btn.innerHTML = originalText;
+        btn.disabled = false;
+    });
+}
+
+function showSettingsMessage(message, type = 'info') {
+    const msgEl = document.getElementById('settingsMessage');
+    msgEl.textContent = message;
+    msgEl.className = 'settings-message ' + type;
+    msgEl.style.display = 'block';
+    if (type !== 'error') {
+        setTimeout(() => {
+            msgEl.style.display = 'none';
+        }, 4000);
+    }
 }
 
 function escapeHtml(text) {
@@ -718,13 +844,19 @@ function initHostSpeechRecognition() {
     hostSpeechRecognition = new SpeechRecognition();
     hostSpeechRecognition.continuous = true;
     hostSpeechRecognition.interimResults = true;
-    hostSpeechRecognition.lang = 'en-US';
-    hostSpeechRecognition.maxAlternatives = 1;
+    hostSpeechRecognition.lang = localStorage.getItem('sttLang') || navigator.language || 'en-IN';
+    // Higher alternatives = better accuracy for non-English / accented English
+    hostSpeechRecognition.maxAlternatives = 5;
     hostSpeechRecognition.onresult = (event) => {
         hostInterimText = '';
         for (let i = event.resultIndex; i < event.results.length; i++) {
             if (event.results[i].isFinal) {
-                hostTranscriptText += event.results[i][0].transcript + ' ';
+                // Pick highest-confidence alternative
+                let best = event.results[i][0];
+                for (let a = 1; a < event.results[i].length; a++) {
+                    if ((event.results[i][a].confidence || 0) > (best.confidence || 0)) best = event.results[i][a];
+                }
+                hostTranscriptText += best.transcript + ' ';
             } else {
                 hostInterimText += event.results[i][0].transcript;
             }

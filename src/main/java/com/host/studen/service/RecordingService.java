@@ -6,6 +6,7 @@ import com.host.studen.model.Transcript;
 import com.host.studen.model.User;
 import com.host.studen.repository.RecordingRepository;
 import com.host.studen.repository.TranscriptRepository;
+import com.host.studen.repository.UserRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -35,6 +36,12 @@ public class RecordingService {
 
     @Autowired
     private TranscriptRepository transcriptRepository;
+
+    @Autowired
+    private WhatsAppNotificationService whatsAppNotificationService;
+
+    @Autowired
+    private UserRepository userRepository;
 
     public Optional<Recording> findById(Long id) {
         return recordingRepository.findById(id);
@@ -91,7 +98,9 @@ public class RecordingService {
         
         // Save transcript (from browser speech recognition or placeholder)
         generateTranscriptForRecording(savedRecording, recordedBy, transcriptText);
-        
+
+        triggerWhatsAppNotification(savedRecording, meeting, recordedBy);
+
         return savedRecording;
     }
 
@@ -131,8 +140,36 @@ public class RecordingService {
         
         // Auto-generate transcript
         generateTranscriptForRecording(savedRecording, recordedBy, null);
-        
+
+        triggerWhatsAppNotification(savedRecording, meeting, recordedBy);
+
         return savedRecording;
+    }
+
+    /**
+     * Centralised WhatsApp dispatch with full diagnostic logging so we can
+     * track exactly why a notification did or didn't go out.
+     */
+    private void triggerWhatsAppNotification(Recording savedRecording, Meeting meeting, User recordedBy) {
+        try {
+            if (meeting.getHost() == null) {
+                log.warn("WhatsApp NOT triggered (recording {}): meeting has no host", savedRecording.getId());
+                return;
+            }
+            User teacher = userRepository.findById(meeting.getHost().getId()).orElse(meeting.getHost());
+
+            log.info("WhatsApp trigger: recording={}, student='{}', teacher='{}', enabled={}, hasNumber={}, hasApiKey={}",
+                    savedRecording.getId(),
+                    recordedBy.getDisplayName(),
+                    teacher.getUsername(),
+                    teacher.isWhatsappNotificationsEnabled(),
+                    teacher.getWhatsappNumber() != null && !teacher.getWhatsappNumber().isBlank(),
+                    teacher.getWhatsappApiKey() != null && !teacher.getWhatsappApiKey().isBlank());
+
+            whatsAppNotificationService.notifyTeacherOnRecording(savedRecording, recordedBy, teacher);
+        } catch (Exception e) {
+            log.error("WhatsApp trigger failed for recording {}: {}", savedRecording.getId(), e.getMessage(), e);
+        }
     }
 
     /**

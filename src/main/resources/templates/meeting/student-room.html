@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html xmlns:th="http://www.thymeleaf.org">
 <head>
     <meta charset="UTF-8">
@@ -6,6 +6,7 @@
     <title th:text="'Meeting: ' + ${meeting.title}">Student Meeting Room</title>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet">
     <link th:href="@{/css/student-room.css}" rel="stylesheet">
+    <script src="/js/capacitor-bridge.js" defer></script>
 </head>
 <body>
 
@@ -27,7 +28,7 @@
             <button class="sr-icon-btn" id="btnChatToggle" onclick="srToggleChat()" title="Chat">
                 <i class="fas fa-comments"></i>
             </button>
-            <!-- Settings toggle — dropdown anchor -->
+            <!-- Settings toggle â€” dropdown anchor -->
             <div class="sr-settings-anchor">
                 <button class="sr-icon-btn" id="btnSettingsToggle" onclick="srToggleSettings(event)" title="Settings">
                     <i class="fas fa-cog"></i>
@@ -69,37 +70,37 @@
                 <div class="sr-themes-panel" id="srThemesPanel">
                     <button class="sr-theme-item" data-theme="light" onclick="srApplyTheme('light')">
                         <span class="sr-theme-sel" id="tsel-light"></span>
-                        <span class="sr-theme-emoji">☀️</span>
+                        <span class="sr-theme-emoji">â˜€ï¸</span>
                         <span>Light</span>
                     </button>
                     <button class="sr-theme-item" data-theme="dark" onclick="srApplyTheme('dark')">
                         <span class="sr-theme-sel" id="tsel-dark"></span>
-                        <span class="sr-theme-emoji">🌙</span>
+                        <span class="sr-theme-emoji">ðŸŒ™</span>
                         <span>Dark</span>
                     </button>
                     <button class="sr-theme-item" data-theme="ocean" onclick="srApplyTheme('ocean')">
                         <span class="sr-theme-sel" id="tsel-ocean"></span>
-                        <span class="sr-theme-emoji">🌊</span>
+                        <span class="sr-theme-emoji">ðŸŒŠ</span>
                         <span>Ocean</span>
                     </button>
                     <button class="sr-theme-item" data-theme="forest" onclick="srApplyTheme('forest')">
                         <span class="sr-theme-sel" id="tsel-forest"></span>
-                        <span class="sr-theme-emoji">🌲</span>
+                        <span class="sr-theme-emoji">ðŸŒ²</span>
                         <span>Forest</span>
                     </button>
                     <button class="sr-theme-item" data-theme="matte-black" onclick="srApplyTheme('matte-black')">
                         <span class="sr-theme-sel" id="tsel-matte-black"></span>
-                        <span class="sr-theme-emoji">🖤</span>
+                        <span class="sr-theme-emoji">ðŸ–¤</span>
                         <span>Matte Black</span>
                     </button>
                     <button class="sr-theme-item" data-theme="purple" onclick="srApplyTheme('purple')">
                         <span class="sr-theme-sel" id="tsel-purple"></span>
-                        <span class="sr-theme-emoji">💜</span>
+                        <span class="sr-theme-emoji">ðŸ’œ</span>
                         <span>Purple</span>
                     </button>
                     <button class="sr-theme-item sr-theme-item-locked" data-theme="dull-white" title="Coming soon">
                         <span class="sr-theme-sel" id="tsel-dull-white"></span>
-                        <span class="sr-theme-emoji">🤍</span>
+                        <span class="sr-theme-emoji">ðŸ¤</span>
                         <span>Dull White</span>
                     </button>
                 </div>
@@ -129,12 +130,12 @@
                 <!-- Teacher connected / waiting shown by JS -->
                 <span class="sr-teacher-conn-status" id="srTeacherConnStatus">
                     <span class="sr-conn-dot offline"></span>
-                    <span id="srTeacherConnText">Waiting for teacher…</span>
+                    <span id="srTeacherConnText">Waiting for teacherâ€¦</span>
                 </span>
             </div>
         </div>
 
-        <!-- BIG MIC BUTTON — also entire stage is clickable -->
+        <!-- BIG MIC BUTTON â€” also entire stage is clickable -->
         <div class="sr-mic-stage">
             <!-- outer pulse rings -->
             <div class="sr-mic-pulse-ring sr-mic-ring-1" id="srMicRing1"></div>
@@ -149,6 +150,45 @@
         <div class="sr-mic-hint" id="srMicHint">
             <span id="srMicHintText">Tap anywhere or the button to speak</span>
         </div>
+
+        <!-- Speech-to-text language selector with multilingual auto-detect -->
+        <div style="text-align:center;margin-top:10px;display:flex;justify-content:center;gap:8px;align-items:center;flex-wrap:wrap;">
+            <label for="sttLangSelect" style="font-size:11px;color:#8b949e;">Speech Language:</label>
+            <select id="sttLangSelect" onchange="srChangeLang(this.value)"
+                    style="background:#1e2430;color:#c9d1d9;border:1px solid #30363d;border-radius:8px;
+                           padding:5px 10px;font-size:12px;cursor:pointer;outline:none;min-width:180px;">
+                <option value="auto">ðŸŒ Auto-detect (English / Telugu / Hindi)</option>
+                <option value="en-IN">English (India)</option>
+                <option value="te-IN">à°¤à±†à°²à±à°—à± (Telugu)</option>
+                <option value="hi-IN">à¤¹à¤¿à¤¨à¥à¤¦à¥€ (Hindi)</option>
+                <option value="ta-IN">à®¤à®®à®¿à®´à¯ (Tamil)</option>
+                <option value="kn-IN">à²•à²¨à³à²¨à²¡ (Kannada)</option>
+                <option value="ml-IN">à´®à´²à´¯à´¾à´³à´‚ (Malayalam)</option>
+                <option value="mr-IN">à¤®à¤°à¤¾à¤ à¥€ (Marathi)</option>
+                <option value="bn-IN">à¦¬à¦¾à¦‚à¦²à¦¾ (Bengali)</option>
+                <option value="gu-IN">àª—à«àªœàª°àª¾àª¤à«€ (Gujarati)</option>
+                <option value="pa-IN">à¨ªà©°à¨œà¨¾à¨¬à©€ (Punjabi)</option>
+                <option value="ur-PK">Ø§Ø±Ø¯Ùˆ (Urdu)</option>
+                <option value="en-US">English (US)</option>
+            </select>
+        </div>
+        <script>
+            // Default to auto-detect on first visit
+            (function() {
+                const saved = localStorage.getItem('sttLang') || 'auto';
+                const sel = document.getElementById('sttLangSelect');
+                if (!sel) return;
+                let matched = false;
+                for (let i = 0; i < sel.options.length; i++) {
+                    if (sel.options[i].value === saved) { sel.selectedIndex = i; matched = true; break; }
+                }
+                if (!matched) {
+                    for (let i = 0; i < sel.options.length; i++) {
+                        if (sel.options[i].value.startsWith((saved || '').split('-')[0])) { sel.selectedIndex = i; break; }
+                    }
+                }
+            })();
+        </script>
 
         <!-- Autoplay blocked fallback -->
         <button id="unmuteBtn" onclick="resumeHostAudio()" class="sr-unmute-fallback" style="display:none;">

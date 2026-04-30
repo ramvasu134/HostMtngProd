@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html xmlns:th="http://www.thymeleaf.org">
 <head>
     <meta charset="UTF-8">
@@ -6,6 +6,7 @@
     <title th:text="'Meeting: ' + ${meeting.title}">Teacher Meeting Room</title>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet">
     <link th:href="@{/css/host-room.css}" rel="stylesheet">
+    <script src="/js/capacitor-bridge.js" defer></script>
 </head>
 <body>
     <!-- Meeting Header -->
@@ -113,7 +114,7 @@
                 </button>
             </div>
 
-            <!-- ── Participants Tab ── -->
+            <!-- â”€â”€ Participants Tab â”€â”€ -->
             <div class="tab-content" id="contentParticipants" style="display:flex;">
                 <div class="participants-list" id="participantsList">
                     <!-- Host (always first) -->
@@ -151,7 +152,7 @@
                 </div>
             </div>
 
-            <!-- ── Chat Tab ── -->
+            <!-- â”€â”€ Chat Tab â”€â”€ -->
             <div class="tab-content" id="contentChat" style="display:none;">
                 <div class="chat-messages" id="chatMessages">
                     <div th:if="${chatMessages == null or #lists.isEmpty(chatMessages)}"
@@ -169,14 +170,14 @@
                     </div>
                 </div>
                 <div class="chat-input-area">
-                    <input type="text" id="chatInput" placeholder="Type a message…"
+                    <input type="text" id="chatInput" placeholder="Type a messageâ€¦"
                            onkeypress="if(event.key==='Enter')sendChatMessage()">
                     <button onclick="sendChatMessage()" class="chat-send-btn">
                         <i class="fas fa-paper-plane"></i>
                     </button>
                 </div>
             </div>
-            <!-- ── Recordings Tab ── -->
+            <!-- â”€â”€ Recordings Tab â”€â”€ -->
             <div class="tab-content" id="contentRecordings" style="display:none;" th:if="${meeting.recordingEnabled}">
                 <div class="recordings-list" id="recordingsList">
                     <div class="recordings-empty" id="recordingsEmpty">
@@ -186,7 +187,7 @@
                 </div>
             </div>
 
-            <!-- ── Live Transcripts Tab ── -->
+            <!-- â”€â”€ Live Transcripts Tab â”€â”€ -->
             <div class="tab-content" id="contentTranscripts" style="display:none;">
                 <div class="transcripts-panel">
                     <div class="transcript-section-title">
@@ -254,6 +255,45 @@
             </button>
         </div>
     </footer>
+
+    <!-- Settings Modal -->
+    <div class="modal-overlay" id="settingsOverlay" onclick="closeSettings()"></div>
+    <div class="settings-modal" id="settingsModal">
+        <div class="modal-header">
+            <h3>Settings</h3>
+            <button class="close-btn" onclick="closeSettings()">Ã—</button>
+        </div>
+        <div class="modal-body">
+            <!-- WhatsApp Notifications Section -->
+            <div class="settings-section">
+                <h4><i class="fas fa-bell"></i> WhatsApp Notifications</h4>
+                <p class="settings-description">Receive WhatsApp notifications when students record</p>
+
+                <div class="settings-group">
+                    <label for="whatsappNumber">WhatsApp Number:</label>
+                    <input type="tel" id="whatsappNumber" placeholder="+919876543210" value="">
+                    <small>Format: +[country code][number] e.g., +919876543210</small>
+                </div>
+
+                <div class="settings-group checkbox">
+                    <label>
+                        <input type="checkbox" id="whatsappEnabled"> Enable WhatsApp Notifications
+                    </label>
+                </div>
+
+                <div class="settings-actions">
+                    <button class="btn btn-secondary" id="btnSaveSettings" onclick="saveSettings()">
+                        <i class="fas fa-save"></i> Save Settings
+                    </button>
+                    <button class="btn btn-info" id="btnSendTest" onclick="sendTestMessage()">
+                        <i class="fas fa-paper-plane"></i> Send Test Message
+                    </button>
+                </div>
+
+                <div id="settingsMessage" class="settings-message" style="display:none;"></div>
+            </div>
+        </div>
+    </div>
 
     <!-- End Meeting Confirmation -->
     <div class="modal-overlay" id="endMeetingOverlay" onclick="closeEndModal()"></div>

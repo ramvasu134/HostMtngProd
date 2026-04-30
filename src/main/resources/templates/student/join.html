@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html xmlns:th="http://www.thymeleaf.org">
 <head>
     <meta charset="UTF-8">
@@ -138,6 +138,7 @@
             gap: 8px;
         }
     </style>
+    <script src="/js/capacitor-bridge.js" defer></script>
 </head>
 <body class="sj-body">
 
@@ -170,13 +171,13 @@
                 </div>
                 <!-- Themes panel -->
                 <div class="sr-themes-panel" id="srThemesPanel">
-                    <button class="sr-theme-item" data-theme="light"        onclick="srApplyTheme('light')"><span class="sr-theme-sel" id="tsel-light"></span><span class="sr-theme-emoji">☀️</span><span>Light</span></button>
-                    <button class="sr-theme-item" data-theme="dark"         onclick="srApplyTheme('dark')"><span class="sr-theme-sel" id="tsel-dark"></span><span class="sr-theme-emoji">🌙</span><span>Dark</span></button>
-                    <button class="sr-theme-item" data-theme="ocean"        onclick="srApplyTheme('ocean')"><span class="sr-theme-sel" id="tsel-ocean"></span><span class="sr-theme-emoji">🌊</span><span>Ocean</span></button>
-                    <button class="sr-theme-item" data-theme="forest"       onclick="srApplyTheme('forest')"><span class="sr-theme-sel" id="tsel-forest"></span><span class="sr-theme-emoji">🌲</span><span>Forest</span></button>
-                    <button class="sr-theme-item" data-theme="matte-black"  onclick="srApplyTheme('matte-black')"><span class="sr-theme-sel" id="tsel-matte-black"></span><span class="sr-theme-emoji">🖤</span><span>Matte Black</span></button>
-                    <button class="sr-theme-item" data-theme="purple"       onclick="srApplyTheme('purple')"><span class="sr-theme-sel" id="tsel-purple"></span><span class="sr-theme-emoji">💜</span><span>Purple</span></button>
-                    <button class="sr-theme-item sr-theme-item-locked" data-theme="dull-white" title="Coming soon"><span class="sr-theme-sel" id="tsel-dull-white"></span><span class="sr-theme-emoji">🤍</span><span>Dull White</span></button>
+                    <button class="sr-theme-item" data-theme="light"        onclick="srApplyTheme('light')"><span class="sr-theme-sel" id="tsel-light"></span><span class="sr-theme-emoji">â˜€ï¸</span><span>Light</span></button>
+                    <button class="sr-theme-item" data-theme="dark"         onclick="srApplyTheme('dark')"><span class="sr-theme-sel" id="tsel-dark"></span><span class="sr-theme-emoji">ðŸŒ™</span><span>Dark</span></button>
+                    <button class="sr-theme-item" data-theme="ocean"        onclick="srApplyTheme('ocean')"><span class="sr-theme-sel" id="tsel-ocean"></span><span class="sr-theme-emoji">ðŸŒŠ</span><span>Ocean</span></button>
+                    <button class="sr-theme-item" data-theme="forest"       onclick="srApplyTheme('forest')"><span class="sr-theme-sel" id="tsel-forest"></span><span class="sr-theme-emoji">ðŸŒ²</span><span>Forest</span></button>
+                    <button class="sr-theme-item" data-theme="matte-black"  onclick="srApplyTheme('matte-black')"><span class="sr-theme-sel" id="tsel-matte-black"></span><span class="sr-theme-emoji">ðŸ–¤</span><span>Matte Black</span></button>
+                    <button class="sr-theme-item" data-theme="purple"       onclick="srApplyTheme('purple')"><span class="sr-theme-sel" id="tsel-purple"></span><span class="sr-theme-emoji">ðŸ’œ</span><span>Purple</span></button>
+                    <button class="sr-theme-item sr-theme-item-locked" data-theme="dull-white" title="Coming soon"><span class="sr-theme-sel" id="tsel-dull-white"></span><span class="sr-theme-emoji">ðŸ¤</span><span>Dull White</span></button>
                 </div>
             </div>
         </div>
@@ -278,7 +279,7 @@
             if (!silent) localStorage.setItem('sr_theme', theme);
             document.querySelectorAll('.sr-theme-sel').forEach(el => el.textContent = '');
             const sel = document.getElementById('tsel-' + theme);
-            if (sel) sel.textContent = '•';
+            if (sel) sel.textContent = 'â€¢';
         }
 
         // Restore theme on load

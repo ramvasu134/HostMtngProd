@@ -8,6 +8,7 @@ import com.host.studen.model.Transcript;
 import com.host.studen.model.User;
 import com.host.studen.security.CustomUserDetails;
 import com.host.studen.service.ChatService;
+import com.host.studen.service.LanguageTranslationService;
 import com.host.studen.service.MeetingService;
 import com.host.studen.service.RecordingService;
 import com.host.studen.service.TranscriptService;
@@ -43,6 +44,9 @@ public class WebSocketController {
 
     @Autowired
     private TranscriptService transcriptService;
+
+    @Autowired
+    private LanguageTranslationService languageTranslationService;
 
     // WebRTC Signaling
     @MessageMapping("/signal/{meetingCode}")
@@ -237,6 +241,14 @@ public class WebSocketController {
                 return response;
             }
 
+            // Detect language and translate if needed
+            String detectedLanguage = languageTranslationService.detectLanguage(transcriptText);
+            String enhancedTranscriptText = languageTranslationService.enhanceTranscriptText(transcriptText);
+            String languageName = languageTranslationService.getLanguageName(detectedLanguage);
+
+            log.info("Transcript from {}: detected language {} ({}), original length: {}",
+                    user.getDisplayName(), detectedLanguage, languageName, transcriptText.length());
+
             // Find or create recording if recordingId provided
             Recording recording = null;
             if (recordingId != null) {
@@ -250,15 +262,15 @@ public class WebSocketController {
             }
             transcript.setUser(user);
             transcript.setSpeakerName(speakerName);
-            transcript.setContent(transcriptText);
+            transcript.setContent(enhancedTranscriptText); // Store translated/enhanced version
             transcript.setStartTimeSeconds(startTime);
             transcript.setEndTimeSeconds(endTime);
-            transcript.setLanguage("en");
+            transcript.setLanguage(detectedLanguage);
 
             Transcript savedTranscript = transcriptService.saveTranscript(transcript);
 
-            log.info("Live transcript created for user {} in meeting {}: {}", 
-                    user.getDisplayName(), meetingCode, savedTranscript.getId());
+            log.info("Live transcript created for user {} in meeting {}: {} (language: {})", 
+                    user.getDisplayName(), meetingCode, savedTranscript.getId(), detectedLanguage);
 
             // Honour the flag the client sent — teacher-dashboard sends true,
             // student-room always sends false regardless of the user's DB role.
@@ -274,7 +286,10 @@ public class WebSocketController {
             response.put("userName", user.getDisplayName());
             response.put("speakerName", speakerName);
             response.put("isTeacher", isHost);
-            response.put("text", transcriptText);
+            response.put("text", enhancedTranscriptText);
+            response.put("originalText", transcriptText);
+            response.put("language", detectedLanguage);
+            response.put("languageName", languageName);
             response.put("startTime", startTime);
             response.put("endTime", endTime);
             response.put("timestamp", LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));

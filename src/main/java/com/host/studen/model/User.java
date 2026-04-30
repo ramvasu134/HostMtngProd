@@ -45,6 +45,22 @@ public class User {
     private String teacherLogo;  // Logo URL/path for teachers that students will see
     private boolean active = true;
 
+    /** WhatsApp number for recording notifications (HOST only), e.g. +919876543210 */
+    @Column(name = "whatsapp_number")
+    private String whatsappNumber;
+
+    /**
+     * CallMeBot WhatsApp API key — free per-user key obtained by sending
+     * "I allow callmebot to send me messages" to +34 644 51 95 23.
+     * When present, used as primary WhatsApp send channel (no Twilio/admin setup needed).
+     */
+    @Column(name = "whatsapp_api_key")
+    private String whatsappApiKey;
+
+    /** Whether the teacher has opted-in to WhatsApp recording notifications */
+    @Column(name = "whatsapp_notifications_enabled", columnDefinition = "boolean default false")
+    private Boolean whatsappNotificationsEnabled = false;
+
     @Column(updatable = false)
     private LocalDateTime createdAt;
 
@@ -135,5 +151,14 @@ public class User {
 
     public Set<MeetingParticipant> getMeetingParticipations() { return meetingParticipations; }
     public void setMeetingParticipations(Set<MeetingParticipant> meetingParticipations) { this.meetingParticipations = meetingParticipations; }
+
+    public String getWhatsappNumber() { return whatsappNumber; }
+    public void setWhatsappNumber(String whatsappNumber) { this.whatsappNumber = whatsappNumber; }
+
+    public String getWhatsappApiKey() { return whatsappApiKey; }
+    public void setWhatsappApiKey(String whatsappApiKey) { this.whatsappApiKey = whatsappApiKey; }
+
+    public boolean isWhatsappNotificationsEnabled() { return Boolean.TRUE.equals(whatsappNotificationsEnabled); }
+    public void setWhatsappNotificationsEnabled(boolean whatsappNotificationsEnabled) { this.whatsappNotificationsEnabled = whatsappNotificationsEnabled; }
 }
 

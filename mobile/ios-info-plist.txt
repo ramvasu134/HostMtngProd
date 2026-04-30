@@ -1,0 +1,23 @@
+<!--
+  Copy these <key> / <string> pairs into the top-level <dict> of
+  ios/App/App/Info.plist  (after running `npx cap add ios`).
+
+  iOS will reject the build if the app accesses the camera or microphone
+  without these usage descriptions.
+-->
+
+<key>NSCameraUsageDescription</key>
+<string>Host Mtng uses the camera so you can join video meetings.</string>
+
+<key>NSMicrophoneUsageDescription</key>
+<string>Host Mtng uses the microphone to record your voice during meetings.</string>
+
+<key>NSPhotoLibraryAddUsageDescription</key>
+<string>Host Mtng saves recorded meetings to your library when you tap Download.</string>
+
+<!-- Allow background audio so live meetings keep audio active when the app is briefly backgrounded. -->
+<key>UIBackgroundModes</key>
+<array>
+    <string>audio</string>
+    <string>voip</string>
+</array>

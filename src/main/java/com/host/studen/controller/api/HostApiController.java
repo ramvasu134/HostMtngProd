@@ -36,6 +36,9 @@ public class HostApiController {
     @Autowired
     private RecordingService recordingService;
 
+    @Autowired
+    private WhatsAppNotificationService whatsAppNotificationService;
+
     // ===== Recordings =====
 
     @GetMapping("/recordings")
@@ -436,6 +439,188 @@ public class HostApiController {
         try {
             scheduleService.deleteSchedule(id);
             return ResponseEntity.ok(Map.of("success", true, "message", "Schedule deleted"));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("success", false, "message", e.getMessage()));
+        }
+    }
+
+    // ===== WhatsApp Notification Settings =====
+
+    /** Returns the current teacher's WhatsApp notification settings (always fresh from DB). */
+    @GetMapping("/whatsapp-settings")
+    public ResponseEntity<?> getWhatsappSettings(@AuthenticationPrincipal CustomUserDetails userDetails) {
+        try {
+            User teacher = userService.findById(userDetails.getUserId())
+                    .orElseThrow(() -> new RuntimeException("Teacher not found"));
+            Map<String, Object> resp = new HashMap<>();
+            resp.put("whatsappNumber", teacher.getWhatsappNumber() != null ? teacher.getWhatsappNumber() : "");
+            resp.put("whatsappApiKey", teacher.getWhatsappApiKey() != null ? teacher.getWhatsappApiKey() : "");
+            resp.put("whatsappNotificationsEnabled", teacher.isWhatsappNotificationsEnabled());
+            return ResponseEntity.ok(resp);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("success", false, "message", e.getMessage()));
+        }
+    }
+
+    /**
+     * Saves the teacher's WhatsApp number, CallMeBot API key, and notification preference.
+     * Body: {
+     *   "whatsappNumber": "9876543210",
+     *   "whatsappApiKey": "1234567",
+     *   "whatsappNotificationsEnabled": true
+     * }
+     *
+     * Number normalisation: 10 digits → +91XXXXXXXXXX, otherwise prepends '+'.
+     */
+    @PutMapping("/whatsapp-settings")
+    public ResponseEntity<?> updateWhatsappSettings(@RequestBody Map<String, Object> body,
+                                                     @AuthenticationPrincipal CustomUserDetails userDetails) {
+        try {
+            User teacher = userService.findById(userDetails.getUserId())
+                    .orElseThrow(() -> new RuntimeException("Teacher not found"));
+
+            String rawNumber = body.containsKey("whatsappNumber")
+                    ? String.valueOf(body.get("whatsappNumber")).trim() : null;
+            String rawApiKey = body.containsKey("whatsappApiKey")
+                    ? String.valueOf(body.get("whatsappApiKey")).trim() : null;
+            Boolean enabled = body.containsKey("whatsappNotificationsEnabled")
+                    ? Boolean.parseBoolean(String.valueOf(body.get("whatsappNotificationsEnabled")))
+                    : null;
+
+            if (rawNumber != null) {
+                if (rawNumber.isEmpty() || "null".equalsIgnoreCase(rawNumber)) {
+                    teacher.setWhatsappNumber(null);
+                } else {
+                    String normalised = normaliseNumber(rawNumber);
+                    if (normalised == null) {
+                        return ResponseEntity.badRequest().body(Map.of(
+                                "success", false,
+                                "message", "Invalid number. Examples: 9876543210 or +919876543210"));
+                    }
+                    teacher.setWhatsappNumber(normalised);
+                }
+            }
+            if (rawApiKey != null) {
+                if (rawApiKey.isEmpty() || "null".equalsIgnoreCase(rawApiKey)) {
+                    teacher.setWhatsappApiKey(null);
+                } else {
+                    // Strip whitespace and any non-alphanumeric characters except common ones
+                    String key = rawApiKey.replaceAll("\\s+", "");
+                    teacher.setWhatsappApiKey(key);
+                }
+            }
+            if (enabled != null) {
+                teacher.setWhatsappNotificationsEnabled(enabled);
+            }
+
+            User saved = userService.save(teacher);
+
+            Map<String, Object> resp = new HashMap<>();
+            resp.put("success", true);
+            resp.put("message", "WhatsApp settings saved ✓");
+            resp.put("whatsappNumber", saved.getWhatsappNumber() != null ? saved.getWhatsappNumber() : "");
+            resp.put("whatsappApiKey", saved.getWhatsappApiKey() != null ? saved.getWhatsappApiKey() : "");
+            resp.put("whatsappNotificationsEnabled", saved.isWhatsappNotificationsEnabled());
+            return ResponseEntity.ok(resp);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("success", false, "message", e.getMessage()));
+        }
+    }
+
+    /** Same normaliser logic as the service, kept separate to validate at API edge. */
+    private String normaliseNumber(String raw) {
+        if (raw == null || raw.trim().isEmpty()) return null;
+        String stripped = raw.trim().replaceAll("[\\s\\-()]", "");
+        String digits;
+        if (stripped.startsWith("+")) {
+            digits = stripped.substring(1).replaceAll("[^0-9]", "");
+            if (digits.length() < 8) return null;
+            return "+" + digits;
+        }
+        digits = stripped.replaceAll("[^0-9]", "");
+        if (digits.length() == 10) return "+91" + digits;
+        if (digits.length() < 8) return null;
+        return "+" + digits;
+    }
+
+    /**
+     * Sends a test WhatsApp message using the number currently saved in DB.
+     * Teacher should save their number first, then click Send Test.
+     */
+    @PostMapping("/whatsapp-settings/test")
+    public ResponseEntity<?> testWhatsappMessage(@AuthenticationPrincipal CustomUserDetails userDetails) {
+        try {
+            User teacher = userService.findById(userDetails.getUserId())
+                    .orElseThrow(() -> new RuntimeException("Teacher not found"));
+            String result = whatsAppNotificationService.sendTestMessage(teacher);
+            boolean success = result.startsWith("Test message sent");
+            return ResponseEntity.ok(Map.of("success", success, "message", result));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("success", false, "message", e.getMessage()));
+        }
+    }
+
+    /**
+     * Dynamic "Send Now" endpoint — used by the dashboard to dispatch a
+     * notification to any number the teacher types in, on demand. The body
+     * is minimal: <code>{"recipient":"+919...","url":"https://..."}</code>.
+     *
+     * <p>The phone number is sanitised server-side (spaces, dashes,
+     * parentheses, missing country code are all handled), and the service
+     * uses the single global Twilio gateway when configured, falling back
+     * to the per-teacher CallMeBot key only if the admin hasn't set up
+     * Twilio.
+     */
+    @PostMapping("/whatsapp-settings/send-now")
+    public ResponseEntity<?> sendNow(@AuthenticationPrincipal CustomUserDetails userDetails,
+                                     @RequestBody Map<String, String> body) {
+        try {
+            User teacher = userService.findById(userDetails.getUserId())
+                    .orElseThrow(() -> new RuntimeException("Teacher not found"));
+
+            String recipient = body != null ? body.getOrDefault("recipient", "") : "";
+            String url       = body != null ? body.getOrDefault("url", "")        : "";
+
+            String result = whatsAppNotificationService.sendNow(teacher, recipient, url);
+            boolean success = result.startsWith("Test message sent");
+            return ResponseEntity.ok(Map.of("success", success, "message", result));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("success", false, "message", e.getMessage()));
+        }
+    }
+
+    /**
+     * Returns the last N WhatsApp send attempts for the current teacher,
+     * newest first. Used by the dashboard's Notifications status box so the
+     * host can see real-time success / failure (e.g. invalid API key,
+     * rate limit, network error, etc.).
+     */
+    @GetMapping("/whatsapp-settings/status")
+    public ResponseEntity<?> whatsappNotificationStatus(@AuthenticationPrincipal CustomUserDetails userDetails) {
+        try {
+            Long teacherId = userDetails.getUserId();
+            DateTimeFormatter ts = DateTimeFormatter.ofPattern("dd MMM yyyy, HH:mm:ss");
+            List<Map<String, Object>> rows = whatsAppNotificationService.getRecentStatuses(teacherId).stream()
+                    .map(s -> {
+                        Map<String, Object> r = new HashMap<>();
+                        r.put("timestamp",       s.getTimestamp() != null ? s.getTimestamp().format(ts) : "");
+                        r.put("lastUpdated",     s.getLastUpdated() != null ? s.getLastUpdated().format(ts) : "");
+                        r.put("recipientNumber", s.getRecipientNumber() != null ? s.getRecipientNumber() : "");
+                        r.put("recordingId",     s.getRecordingId());
+                        r.put("studentName",     s.getStudentName() != null ? s.getStudentName() : "");
+                        r.put("result",          s.getResult() != null ? s.getResult().name() : "");
+                        r.put("lifecycle",       s.getLifecycle() != null ? s.getLifecycle().name() : "");
+                        r.put("provider",        s.getProvider() != null ? s.getProvider() : "");
+                        r.put("messageSid",      s.getProviderMessageId() != null ? s.getProviderMessageId() : "");
+                        r.put("message",         s.getMessage() != null ? s.getMessage() : "");
+                        return r;
+                    })
+                    .collect(Collectors.toList());
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "statuses", rows,
+                    "twilioReady", whatsAppNotificationService.isTwilioReady()
+            ));
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(Map.of("success", false, "message", e.getMessage()));
         }

@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Host Mtng</title>
+  <style>
+    html, body {
+      margin: 0; padding: 0; height: 100%;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: #fff;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      display: flex; align-items: center; justify-content: center;
+      text-align: center;
+    }
+    .wrap { padding: 24px; }
+    h1 { font-size: 28px; margin: 0 0 8px; }
+    p  { opacity: .85; margin: 0 0 24px; }
+    .spinner {
+      width: 42px; height: 42px;
+      border-radius: 50%;
+      border: 4px solid rgba(255,255,255,.25);
+      border-top-color: #fff;
+      animation: spin 1s linear infinite;
+      margin: 0 auto;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Host Mtng</h1>
+    <p>Loading classroom…</p>
+    <div class="spinner" aria-hidden="true"></div>
+  </div>
+
+  <!--
+    Capacitor's `server.url` (capacitor.config.json) tells the native WebView to
+    load the live Render-hosted site BEFORE this page is ever shown. This local
+    bundle exists only because Capacitor requires a webDir at build time — it is
+    a safety-net splash screen in case the remote URL is unreachable.
+
+    If for any reason the WebView falls back here, kick the user over to the
+    configured public URL after a short delay so they don't get stuck.
+  -->
+  <script>
+    setTimeout(function () {
+      var fallback = 'https://hoststudentmeeting.onrender.com';
+      try { window.location.replace(fallback); } catch (e) {}
+    }, 2500);
+  </script>
+</body>
+</html>

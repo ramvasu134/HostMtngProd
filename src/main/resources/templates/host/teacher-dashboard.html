@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html xmlns:th="http://www.thymeleaf.org">
 <head>
     <meta charset="UTF-8">
@@ -947,7 +947,7 @@
             to   { opacity: 1; transform: translateY(0); }
         }
 
-        /* ── Conversation Cards (bundled teacher + student exchange) ── */
+        /* â”€â”€ Conversation Cards (bundled teacher + student exchange) â”€â”€ */
         .conv-card {
             background: rgba(15, 23, 42, 0.75);
             border: 1px solid rgba(99,102,241,0.3);
@@ -1398,58 +1398,138 @@
             align-items: center;
         }
 
-        .btn-play-recording, .btn-download-recording, .btn-transcript-recording, .btn-delete-recording {
-            width: 32px;
-            height: 32px;
-            min-width: 32px;
-            flex-shrink: 0;
-            border: none;
-            border-radius: 8px;
-            cursor: pointer;
+        /* â•â•â•â• Recording Action Buttons â€” Tailwind-inspired modern design â•â•â•â•
+         * Layout : horizontal flex group, 8 px gap, 36 px height, px-3 padding
+         * Theming: Play = Emerald (success) / Download = Indigo (primary) / Delete = Red outline (danger)
+         * Effects: subtle hover:scale-105 + matching tint shadow
+         * A11y  : distinct focus ring per button, keyboard-friendly
+         * Mobile: <640 px collapses to icon-only with tooltip (title attr)
+         */
+        .recording-actions-btns {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .btn-play-recording,
+        .btn-download-recording,
+        .btn-delete-recording {
+            height: 36px;
+            min-width: 36px;
+            padding: 0 14px;
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            transition: all 0.2s ease;
+            gap: 6px;
+            font-size: 13px;
+            font-weight: 600;
+            line-height: 1;
+            border-radius: 8px;            /* rounded-md */
+            border: 1.5px solid transparent;
             text-decoration: none;
-            padding: 0;
-            overflow: hidden;
+            cursor: pointer;
+            white-space: nowrap;
+            flex-shrink: 0;
+            transition: transform 0.18s ease, background 0.18s ease,
+                        box-shadow 0.18s ease, color 0.18s ease, border-color 0.18s ease;
+        }
+        .btn-play-recording:active,
+        .btn-download-recording:active,
+        .btn-delete-recording:active {
+            transform: scale(0.97);
+        }
+        .btn-play-recording:focus-visible,
+        .btn-download-recording:focus-visible,
+        .btn-delete-recording:focus-visible {
+            outline: none;
         }
 
+        /* â”€â”€ Play (Success / Emerald) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
         .btn-play-recording {
-            background: var(--gradient-success);
-            color: white;
+            background: linear-gradient(135deg, #10b981, #059669);
+            color: #ffffff;
         }
-
         .btn-play-recording:hover {
-            box-shadow: 0 4px 12px rgba(34, 197, 94, 0.4);
+            background: linear-gradient(135deg, #059669, #047857);
+            transform: scale(1.05);
+            box-shadow: 0 8px 20px rgba(16, 185, 129, 0.35);
+        }
+        .btn-play-recording:focus-visible {
+            box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.55);
         }
 
+        /* â”€â”€ Download (Primary / Indigo) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
         .btn-download-recording {
-            background: rgba(59, 130, 246, 0.15);
-            color: #60a5fa;
+            background: linear-gradient(135deg, #6366f1, #4f46e5);
+            color: #ffffff;
         }
-
         .btn-download-recording:hover {
-            background: rgba(59, 130, 246, 0.25);
+            background: linear-gradient(135deg, #4f46e5, #4338ca);
+            transform: scale(1.05);
+            box-shadow: 0 8px 20px rgba(99, 102, 241, 0.40);
+        }
+        .btn-download-recording:focus-visible {
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.55);
         }
 
+        /* â”€â”€ Delete (Danger / Outline â€” quieter so it doesn't compete) â”€ */
+        .btn-delete-recording {
+            background: rgba(239, 68, 68, 0.04);
+            color: #ef4444;
+            border-color: rgba(239, 68, 68, 0.45);
+        }
+        .btn-delete-recording:hover {
+            background: #ef4444;
+            color: #ffffff;
+            border-color: #ef4444;
+            transform: scale(1.05);
+            box-shadow: 0 8px 20px rgba(239, 68, 68, 0.40);
+        }
+        .btn-delete-recording:focus-visible {
+            box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.50);
+        }
+
+        /* Optional 3rd-party transcript button (kept for compatibility) */
         .btn-transcript-recording {
+            height: 36px;
+            min-width: 36px;
+            padding: 0 14px;
+            border-radius: 8px;
             background: rgba(245, 158, 11, 0.15);
             color: #fbbf24;
+            border: 1.5px solid rgba(245, 158, 11, 0.30);
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.18s ease;
         }
-
         .btn-transcript-recording:hover {
             background: rgba(245, 158, 11, 0.25);
+            transform: scale(1.05);
         }
 
-        .btn-delete-recording {
-            background: rgba(239, 68, 68, 0.15);
-            color: var(--danger);
-        }
-
-        .btn-delete-recording:hover {
-            background: var(--danger);
-            color: white;
+        /* â”€â”€ Responsive: icon-only below 640 px â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+        @media (max-width: 640px) {
+            .btn-play-recording .btn-label,
+            .btn-download-recording .btn-label,
+            .btn-delete-recording .btn-label {
+                display: none;
+            }
+            .btn-play-recording,
+            .btn-download-recording,
+            .btn-delete-recording {
+                padding: 0 10px;
+                width: 36px;
+            }
+            .btn-play-recording i,
+            .btn-download-recording i,
+            .btn-delete-recording i {
+                margin: 0;
+            }
         }
 
         .transcript-preview-inline {
@@ -2209,6 +2289,7 @@
             }
         }
     </style>
+    <script src="/js/capacitor-bridge.js" defer></script>
 </head>
 <body>
     <!-- Toast Notification Container -->
@@ -2274,6 +2355,10 @@
                     <button class="settings-item" onclick="openModal('zoomModal')">
                         <i class="fas fa-search-plus"></i>
                         <span>Zoom Students</span>
+                    </button>
+                    <button class="settings-item" onclick="openWhatsappSettings()">
+                        <i class="fab fa-whatsapp" style="color:#25D366;"></i>
+                        <span>WhatsApp Notifications</span>
                     </button>
                     <div class="settings-item-toggle">
                         <div style="display: flex; align-items: center; gap: 12px;">
@@ -2360,7 +2445,7 @@
 
                     <!-- Students Content -->
                     <div class="participants-content">
-                        <!-- Dais — Speaking Student Spotlight -->
+                        <!-- Dais â€” Speaking Student Spotlight -->
                         <div class="dm-dais-row" id="dashDaisRow">
                             <div class="dm-dais-header">
                                 <i class="fas fa-microphone-alt"></i>
@@ -2432,12 +2517,12 @@
                 <h4>Chat</h4>
                 <p>Start a meeting to access chat</p>
             </div>
-            <!-- Real-time chat — shown once a meeting starts -->
+            <!-- Real-time chat â€” shown once a meeting starts -->
             <div id="dashChatContainer" style="display:none;flex-direction:column;height:calc(100vh - 130px);">
                 <div id="dashChatMessages"
                      style="flex:1;overflow-y:auto;padding:16px 20px;display:flex;flex-direction:column;gap:8px;"></div>
                 <div style="padding:12px 16px;background:var(--bg-secondary);border-top:1px solid var(--border-color);display:flex;gap:8px;">
-                    <input id="dashChatInput" type="text" placeholder="Type a message…"
+                    <input id="dashChatInput" type="text" placeholder="Type a messageâ€¦"
                            onkeypress="if(event.key==='Enter') sendDashChatMessage()"
                            style="flex:1;background:var(--bg-card);border:1px solid var(--border-color);border-radius:8px;padding:10px 14px;color:var(--text-primary);font-size:14px;outline:none;">
                     <button onclick="sendDashChatMessage()"
@@ -2548,7 +2633,7 @@
                         <div class="form-group">
                             <label>Password</label>
                             <div class="password-wrapper">
-                                <input type="password" class="form-input" name="password" id="studentPassword" placeholder="••••••" required>
+                                <input type="password" class="form-input" name="password" id="studentPassword" placeholder="â€¢â€¢â€¢â€¢â€¢â€¢" required>
                                 <button type="button" class="password-toggle" onclick="togglePassword('studentPassword', this)">
                                     <i class="fas fa-eye"></i>
                                 </button>
@@ -2691,15 +2776,24 @@
                                                 <span><i class="fas fa-calendar"></i><span th:text="${#temporals.format(rec.createdAt, 'dd/MM/yyyy')}">13/04/2026</span></span>
                                                 <span><i class="fas fa-clock"></i><span th:text="${#temporals.format(rec.createdAt, 'HH:mm:ss')}">21:45:28</span></span>
                                             </div>
-                                            <div class="recording-actions-btns">
-                                                <button class="btn-play-recording" th:onclick="'event.stopPropagation(); playAudioInline(' + ${rec.id} + ', this)'" title="Play">
-                                                    <i class="fas fa-play"></i>
+                                            <div class="recording-actions-btns" role="group" aria-label="Recording actions">
+                                                <button type="button" class="btn-play-recording"
+                                                        th:onclick="'event.stopPropagation(); playAudioInline(' + ${rec.id} + ', this)'"
+                                                        aria-label="Play recording" title="Play recording">
+                                                    <i class="fas fa-play" aria-hidden="true"></i>
+                                                    <span class="btn-label">Play</span>
                                                 </button>
-                                                <a th:href="@{/api/meeting/recording/{id}/download(id=${rec.id})}" class="btn-download-recording" title="Download">
-                                                    <i class="fas fa-download"></i>
+                                                <a th:href="@{/api/meeting/recording/{id}/download(id=${rec.id})}"
+                                                   class="btn-download-recording"
+                                                   aria-label="Download recording" title="Download recording">
+                                                    <i class="fas fa-download" aria-hidden="true"></i>
+                                                    <span class="btn-label">Download</span>
                                                 </a>
-                                                <button class="btn-delete-recording" th:onclick="'event.stopPropagation(); deleteRecording(' + ${rec.id} + ')'" title="Delete">
-                                                    <i class="fas fa-trash"></i>
+                                                <button type="button" class="btn-delete-recording"
+                                                        th:onclick="'event.stopPropagation(); deleteRecording(' + ${rec.id} + ')'"
+                                                        aria-label="Delete recording" title="Delete recording">
+                                                    <i class="fas fa-trash-alt" aria-hidden="true"></i>
+                                                    <span class="btn-label">Delete</span>
                                                 </button>
                                             </div>
                                             <!-- Inline Audio Player -->
@@ -2816,6 +2910,94 @@
         </div>
     </div>
 
+    <!-- WhatsApp Notifications Modal -->
+    <div class="modal-overlay" id="whatsappModal">
+        <div class="modal-content" style="max-width:520px; max-height:90vh; display:flex; flex-direction:column;">
+            <div class="modal-header" style="flex:0 0 auto;">
+                <h3><i class="fab fa-whatsapp" style="color:#25D366;margin-right:8px;"></i>WhatsApp Notifications</h3>
+                <button class="modal-close" onclick="closeModal('whatsappModal')"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="modal-body" style="flex:1 1 auto; overflow-y:auto;">
+                <p style="color:var(--text-secondary);margin-bottom:14px;font-size:13px;">
+                    Get an instant WhatsApp message every time a student recording is saved.
+                </p>
+
+                <!-- ╔═══════════════════════════════════════════════╗
+                     ║  Active provider banner — populated at runtime ║
+                     ║  by loadWhatsappStatus() based on the          ║
+                     ║  twilioReady flag returned by the status API.  ║
+                     ╚═══════════════════════════════════════════════╝ -->
+                <div id="waProviderBanner"
+                     style="background:rgba(255,255,255,0.04); border:1px solid var(--border-color);
+                            border-radius:10px; padding:10px 12px; margin-bottom:14px; font-size:12px;
+                            color:var(--text-secondary); line-height:1.5;">
+                    <i class="fas fa-spinner fa-spin"></i> Detecting provider…
+                </div>
+
+                <div class="form-group">
+                    <label>WhatsApp Number <span style="color:var(--danger);">*</span></label>
+                    <input type="tel" class="form-input" id="waNumberInput"
+                           placeholder="9876543210 or +919876543210"
+                           style="font-size:15px;">
+                    <small style="color:var(--text-muted);font-size:11px;">
+                        10-digit number auto-prefixed with +91, or use full international format.
+                    </small>
+                </div>
+
+                <!--
+                  Per the "plug-and-play, no-per-teacher-registration" spec,
+                  teachers no longer see any provider-configuration UI — the
+                  central admin gateway handles everything. The original
+                  CallMeBot input is kept as a hidden field so the existing
+                  load/save JS still has a target (it sends an empty value
+                  which is a no-op server-side) and so admins who paste a
+                  legacy key into a teacher's profile via the database still
+                  work without UI changes.
+                -->
+                <input type="hidden" id="waApiKeyInput" value="" />
+
+
+                <div class="form-group" style="display:flex;align-items:center;justify-content:space-between;margin-top:10px;">
+                    <label style="margin:0;">Enable WhatsApp Notifications</label>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="waEnabledToggle">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+
+                <div id="waFeedback" class="alert-custom" style="display:none;margin-top:12px;"></div>
+
+                <!-- â•â•â•â• Recent Notification Status Box â•â•â•â• -->
+                <div style="margin-top:18px; border-top:1px solid var(--border-color); padding-top:14px;">
+                    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+                        <h4 style="margin:0;font-size:13px;color:var(--text-secondary);">
+                            <i class="fas fa-clipboard-list"></i> Recent Notifications
+                        </h4>
+                        <button class="btn-secondary" onclick="loadWhatsappStatus()" style="padding:4px 10px;font-size:11px;">
+                            <i class="fas fa-sync-alt"></i> Refresh
+                        </button>
+                    </div>
+                    <div id="waStatusList" style="font-size:12px; max-height:200px; overflow-y:auto;
+                                                  border:1px solid var(--border-color); border-radius:8px; padding:8px;">
+                        <div style="color:var(--text-muted); text-align:center; padding:8px;">No notifications yet.</div>
+                    </div>
+                </div>
+
+            </div>
+            <div class="modal-footer" style="gap:8px;flex:0 0 auto;">
+                <button class="btn-secondary" onclick="closeModal('whatsappModal')">Cancel</button>
+                <button class="btn-secondary" onclick="sendWhatsappTest()" id="waTestBtn"
+                        style="display:inline-flex;align-items:center;gap:6px;">
+                    <i class="fab fa-whatsapp"></i> Send Test
+                </button>
+                <button class="btn-primary" onclick="saveWhatsappSettings()" id="waSaveBtn"
+                        style="display:inline-flex;align-items:center;gap:6px;">
+                    <i class="fas fa-save"></i> Save Settings
+                </button>
+            </div>
+        </div>
+    </div>
+
     <!-- Schedule Modal -->
     <div class="modal-overlay" id="scheduleModal">
         <div class="modal-content">
@@ -2873,32 +3055,32 @@
                 <div class="themes-grid">
                     <button class="theme-option active" data-theme="dark" onclick="applyTheme('dark')">
                         <span class="theme-check"><i class="fas fa-check"></i></span>
-                        <span class="theme-emoji">🌙</span>
+                        <span class="theme-emoji">ðŸŒ™</span>
                         <span class="theme-name">Dark</span>
                     </button>
                     <button class="theme-option" data-theme="light" onclick="applyTheme('light')">
                         <span class="theme-check"><i class="fas fa-check"></i></span>
-                        <span class="theme-emoji">☀️</span>
+                        <span class="theme-emoji">â˜€ï¸</span>
                         <span class="theme-name">Light</span>
                     </button>
                     <button class="theme-option" data-theme="ocean" onclick="applyTheme('ocean')">
                         <span class="theme-check"><i class="fas fa-check"></i></span>
-                        <span class="theme-emoji">🌊</span>
+                        <span class="theme-emoji">ðŸŒŠ</span>
                         <span class="theme-name">Ocean</span>
                     </button>
                     <button class="theme-option" data-theme="forest" onclick="applyTheme('forest')">
                         <span class="theme-check"><i class="fas fa-check"></i></span>
-                        <span class="theme-emoji">🌲</span>
+                        <span class="theme-emoji">ðŸŒ²</span>
                         <span class="theme-name">Forest</span>
                     </button>
                     <button class="theme-option" data-theme="purple" onclick="applyTheme('purple')">
                         <span class="theme-check"><i class="fas fa-check"></i></span>
-                        <span class="theme-emoji">💜</span>
+                        <span class="theme-emoji">ðŸ’œ</span>
                         <span class="theme-name">Purple</span>
                     </button>
                     <button class="theme-option" data-theme="matte-black" onclick="applyTheme('matte-black')">
                         <span class="theme-check"><i class="fas fa-check"></i></span>
-                        <span class="theme-emoji">🖤</span>
+                        <span class="theme-emoji">ðŸ–¤</span>
                         <span class="theme-name">Matte Black</span>
                     </button>
                 </div>
@@ -3078,7 +3260,7 @@
          display:none;align-items:center;gap:10px;transition:all 0.3s ease;">
     </div>
 
-    <!-- Teacher identity — read by host-dashboard-meeting.js -->
+    <!-- Teacher identity â€” read by host-dashboard-meeting.js -->
     <div id="dashMeetingData"
          th:data-user-id="${user.id}"
          th:data-user-name="${user.displayName}"
@@ -3207,6 +3389,252 @@
             });
         }
 
+        // ===== WhatsApp Notification Settings =====
+
+        function openWhatsappSettings() {
+            toggleSettings();
+            fetch('/api/host/whatsapp-settings')
+                .then(r => r.json())
+                .then(data => {
+                    document.getElementById('waNumberInput').value = data.whatsappNumber || '';
+                    document.getElementById('waApiKeyInput').value = data.whatsappApiKey || '';
+                    document.getElementById('waEnabledToggle').checked = !!data.whatsappNotificationsEnabled;
+                    document.getElementById('waFeedback').style.display = 'none';
+                })
+                .catch(() => {});
+            loadWhatsappStatus();
+            openModal('whatsappModal');
+            startWhatsappStatusPolling();
+        }
+
+        /** Pulls the per-teacher recent send log and renders it inside the modal. */
+        let _waStatusPoll = null;
+
+        async function loadWhatsappStatus() {
+            const list   = document.getElementById('waStatusList');
+            const banner = document.getElementById('waProviderBanner');
+            if (!list) return;
+            try {
+                const r = await fetch('/api/host/whatsapp-settings/status', {
+                    credentials: 'same-origin',
+                    headers: { 'Accept': 'application/json' }
+                });
+                if (r.status === 401) {
+                    if (banner) banner.innerHTML =
+                        '<i class="fas fa-lock" style="color:var(--warning);"></i> ' +
+                        'Session expired. <a href="/login" style="color:var(--primary);">Log in again</a> to load provider status.';
+                    list.innerHTML = '<div style="color:var(--warning);text-align:center;padding:8px;">' +
+                        'Session expired â€” please <a href="/login" style="color:var(--primary);">log in again</a>.</div>';
+                    return;
+                }
+                const ct = (r.headers.get('content-type') || '').toLowerCase();
+                if (!r.ok || ct.indexOf('application/json') < 0) {
+                    list.innerHTML = '<div style="color:var(--danger);text-align:center;padding:8px;">' +
+                        'Status endpoint returned HTTP ' + r.status + '. Try refreshing the page.</div>';
+                    return;
+                }
+                const data = await r.json();
+
+                // Provider banner — green when the central gateway is active,
+                // amber otherwise. Per the "plug-and-play" spec, teachers
+                // never see provider-specific configuration; the message
+                // points them to their admin if anything is missing.
+                if (banner) {
+                    if (data.twilioReady === true) {
+                        banner.style.background = 'rgba(34,197,94,0.10)';
+                        banner.style.borderColor = 'rgba(34,197,94,0.30)';
+                        banner.innerHTML =
+                            '<div style="color:#86efac;font-weight:600;margin-bottom:4px;">' +
+                                '<i class="fas fa-check-circle"></i> WhatsApp service: Active' +
+                            '</div>' +
+                            '<div style="color:var(--text-secondary);">' +
+                                'Recordings will be sent automatically. ' +
+                                'Just type your number, enable the toggle, and click Send Test â€” no other setup needed.' +
+                            '</div>';
+                    } else {
+                        banner.style.background = 'rgba(245,158,11,0.10)';
+                        banner.style.borderColor = 'rgba(245,158,11,0.30)';
+                        banner.innerHTML =
+                            '<div style="color:#fcd34d;font-weight:600;margin-bottom:4px;">' +
+                                '<i class="fas fa-exclamation-triangle"></i> WhatsApp service: Unavailable' +
+                            '</div>' +
+                            '<div style="color:var(--text-secondary);">' +
+                                'The notification service is not yet configured on this server. ' +
+                                'Please contact your administrator â€” no action needed from you.' +
+                            '</div>';
+                    }
+                }
+
+                if (!data || !data.success || !data.statuses || data.statuses.length === 0) {
+                    const tip = data && data.twilioReady === false
+                        ? 'No notifications yet. Save your number, paste a CallMeBot key (or ask admin to enable Twilio), then click Send Test.'
+                        : 'No notifications yet. Send a test message above or wait for the next student recording.';
+                    list.innerHTML = '<div style="color:var(--text-muted);text-align:center;padding:8px;line-height:1.5;">' +
+                        escapeHtml(tip) + '</div>';
+                    return;
+                }
+                list.innerHTML = data.statuses.map(renderStatusRow).join('');
+            } catch (err) {
+                if (banner) banner.innerHTML = '<i class="fas fa-exclamation-triangle"></i> ' +
+                    'Could not detect provider: ' + escapeHtml(err.message || String(err));
+                list.innerHTML = '<div style="color:var(--danger);text-align:center;padding:8px;">' +
+                    'Network error loading status log: ' + escapeHtml(err.message || String(err)) + '</div>';
+            }
+        }
+
+        /** Auto-poll the status log while the WhatsApp modal is open so the
+         *  teacher sees Twilio's lifecycle updates (Queued â†’ Sent â†’ Delivered)
+         *  in real time without manually clicking Refresh. */
+        function startWhatsappStatusPolling() {
+            stopWhatsappStatusPolling();
+            _waStatusPoll = setInterval(() => {
+                const modal = document.getElementById('whatsappModal');
+                if (!modal || modal.style.display === 'none') {
+                    stopWhatsappStatusPolling();
+                    return;
+                }
+                loadWhatsappStatus();
+            }, 5000);
+        }
+        function stopWhatsappStatusPolling() {
+            if (_waStatusPoll) { clearInterval(_waStatusPoll); _waStatusPoll = null; }
+        }
+
+        function renderStatusRow(s) {
+            // Lifecycle drives the colour & icon. Falls back to legacy result.
+            const lifecycle = (s.lifecycle || '').toUpperCase();
+            const result    = (s.result    || '').toUpperCase();
+            const palette = {
+                QUEUED:      { bg:'rgba(234,179,8,0.10)',  border:'rgba(234,179,8,0.30)',  fg:'#fde047', icon:'fa-clock'         , label:'Queued'      },
+                SENDING:     { bg:'rgba(59,130,246,0.10)', border:'rgba(59,130,246,0.30)', fg:'#93c5fd', icon:'fa-paper-plane'   , label:'Sending'     },
+                SENT:        { bg:'rgba(59,130,246,0.10)', border:'rgba(59,130,246,0.30)', fg:'#93c5fd', icon:'fa-paper-plane'   , label:'Sent'        },
+                DELIVERED:   { bg:'rgba(34,197,94,0.10)',  border:'rgba(34,197,94,0.30)',  fg:'#86efac', icon:'fa-check-double'  , label:'Delivered'   },
+                READ:        { bg:'rgba(34,197,94,0.18)',  border:'rgba(34,197,94,0.40)',  fg:'#bbf7d0', icon:'fa-eye'           , label:'Read'        },
+                FAILED:      { bg:'rgba(239,68,68,0.10)',  border:'rgba(239,68,68,0.30)',  fg:'#fca5a5', icon:'fa-times-circle'  , label:'Failed'      },
+                UNDELIVERED: { bg:'rgba(239,68,68,0.10)',  border:'rgba(239,68,68,0.30)',  fg:'#fca5a5', icon:'fa-times-circle'  , label:'Undelivered' },
+                SUCCESS:     { bg:'rgba(34,197,94,0.10)',  border:'rgba(34,197,94,0.30)',  fg:'#86efac', icon:'fa-check-circle'  , label:'Success'     },
+                FAILURE:     { bg:'rgba(239,68,68,0.10)',  border:'rgba(239,68,68,0.30)',  fg:'#fca5a5', icon:'fa-times-circle'  , label:'Failed'      },
+                SKIPPED:     { bg:'rgba(245,158,11,0.08)', border:'rgba(245,158,11,0.25)', fg:'#fcd34d', icon:'fa-circle-pause'  , label:'Skipped'     }
+            };
+            const p = palette[lifecycle] || palette[result] || palette.FAILURE;
+
+            const who = s.studentName ? ('\u2022 ' + escapeHtml(s.studentName)) : '';
+            const recBadge = s.recordingId ? ('<span style="color:var(--text-muted);font-size:10px;">#' + s.recordingId + '</span>') : '';
+            const provBadge = s.provider
+                ? '<span style="background:rgba(255,255,255,0.05);color:var(--text-muted);padding:1px 6px;border-radius:4px;font-size:10px;margin-left:6px;">' + escapeHtml(s.provider) + '</span>'
+                : '';
+            const updated = s.lastUpdated && s.lastUpdated !== s.timestamp
+                ? ' <span style="color:var(--text-muted);font-size:10px;">(updated ' + escapeHtml(s.lastUpdated) + ')</span>'
+                : '';
+
+            return '<div style="background:' + p.bg + ';border:1px solid ' + p.border +
+                   ';border-radius:8px;padding:8px 10px;margin-bottom:6px;">' +
+                   '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">' +
+                       '<div style="color:' + p.fg + ';font-weight:600;font-size:12px;">' +
+                           '<i class="fas ' + p.icon + '"></i> ' + escapeHtml(p.label) + provBadge +
+                           ' <span style="color:var(--text-muted);font-weight:400;">' + escapeHtml(s.timestamp || '') + '</span>' +
+                           updated +
+                       '</div>' +
+                       '<div style="color:var(--text-muted);font-size:11px;">' + escapeHtml(s.recipientNumber || '') + ' ' + recBadge + '</div>' +
+                   '</div>' +
+                   '<div style="color:var(--text-secondary);font-size:11px;margin-top:4px;word-break:break-word;">' +
+                       (who ? who + '<br>' : '') + escapeHtml(s.message || '') +
+                   '</div>' +
+                   '</div>';
+        }
+
+        function escapeHtml(str) {
+            if (str === null || str === undefined) return '';
+            return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                              .replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+        }
+
+        function _waCollectPayload() {
+            return {
+                whatsappNumber: document.getElementById('waNumberInput').value.trim(),
+                whatsappApiKey: document.getElementById('waApiKeyInput').value.trim(),
+                whatsappNotificationsEnabled: document.getElementById('waEnabledToggle').checked
+            };
+        }
+
+        function _waApplyServerResponse(data) {
+            if (data.whatsappNumber !== undefined) document.getElementById('waNumberInput').value = data.whatsappNumber;
+            if (data.whatsappApiKey !== undefined) document.getElementById('waApiKeyInput').value = data.whatsappApiKey;
+        }
+
+        function saveWhatsappSettings() {
+            const feedback = document.getElementById('waFeedback');
+            const saveBtn = document.getElementById('waSaveBtn');
+            saveBtn.disabled = true;
+            saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Savingâ€¦';
+
+            fetch('/api/host/whatsapp-settings', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(_waCollectPayload())
+            })
+            .then(r => r.json())
+            .then(data => {
+                waShowFeedback(feedback, data.message, data.success ? 'success' : 'danger');
+                if (data.success) {
+                    _waApplyServerResponse(data);
+                    setTimeout(() => closeModal('whatsappModal'), 1500);
+                }
+            })
+            .catch(err => {
+                waShowFeedback(feedback, 'Network error â€” please try again. (' + (err.message || '') + ')', 'danger');
+            })
+            .finally(() => {
+                saveBtn.disabled = false;
+                saveBtn.innerHTML = '<i class="fas fa-save"></i> Save Settings';
+            });
+        }
+
+        function sendWhatsappTest() {
+            const feedback = document.getElementById('waFeedback');
+            const btn = document.getElementById('waTestBtn');
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sendingâ€¦';
+
+            // Save first so the test uses the latest number + apiKey
+            fetch('/api/host/whatsapp-settings', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(_waCollectPayload())
+            })
+            .then(r => r.json())
+            .then(saveData => {
+                if (!saveData.success) {
+                    waShowFeedback(feedback, 'Save failed: ' + saveData.message, 'danger');
+                    btn.disabled = false;
+                    btn.innerHTML = '<i class="fab fa-whatsapp"></i> Send Test';
+                    return null;
+                }
+                _waApplyServerResponse(saveData);
+                return fetch('/api/host/whatsapp-settings/test', { method: 'POST' });
+            })
+            .then(r => r ? r.json() : null)
+            .then(data => {
+                if (!data) return;
+                waShowFeedback(feedback, data.message, data.success ? 'success' : 'danger');
+                // Refresh status box so the test attempt appears immediately
+                loadWhatsappStatus();
+            })
+            .catch(err => {
+                waShowFeedback(feedback, 'Network error â€” ' + (err.message || 'please try again.'), 'danger');
+            })
+            .finally(() => {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fab fa-whatsapp"></i> Send Test';
+            });
+        }
+
+        function waShowFeedback(el, msg, type) {
+            el.textContent = msg;
+            el.className = 'alert-custom alert-' + type;
+            el.style.display = 'flex';
+        }
+
         // Theme functions
         function applyTheme(theme) {
             localStorage.setItem('teacherTheme', theme);
@@ -3319,17 +3747,23 @@
 
         function playAudioInline(recordingId, button) {
             const audioContainer = document.getElementById('audio-player-' + recordingId);
+            if (!audioContainer) return;
+            const icon  = button.querySelector('i');
+            const label = button.querySelector('.btn-label');
+            const isHidden = (audioContainer.style.display === 'none');
 
-            if (audioContainer) {
-                if (audioContainer.style.display === 'none') {
-                    audioContainer.style.display = 'block';
-                    button.innerHTML = '<i class="fas fa-pause"></i>';
-                    button.title = 'Hide Player';
-                } else {
-                    audioContainer.style.display = 'none';
-                    button.innerHTML = '<i class="fas fa-play"></i>';
-                    button.title = 'Play';
-                }
+            if (isHidden) {
+                audioContainer.style.display = 'block';
+                if (icon)  icon.className   = 'fas fa-pause';
+                if (label) label.textContent = 'Hide';
+                button.title = 'Hide audio player';
+                button.setAttribute('aria-label', 'Hide audio player');
+            } else {
+                audioContainer.style.display = 'none';
+                if (icon)  icon.className   = 'fas fa-play';
+                if (label) label.textContent = 'Play';
+                button.title = 'Play recording';
+                button.setAttribute('aria-label', 'Play recording');
             }
         }
 
@@ -3342,7 +3776,7 @@
             if (!list) return;
             // Show loading indicator
             const origContent = list.innerHTML;
-            list.innerHTML = '<div style="text-align:center;padding:30px;color:#a0aec0;"><i class="fas fa-spinner fa-spin" style="font-size:24px;"></i><p style="margin-top:10px;">Loading recordings…</p></div>';
+            list.innerHTML = '<div style="text-align:center;padding:30px;color:#a0aec0;"><i class="fas fa-spinner fa-spin" style="font-size:24px;"></i><p style="margin-top:10px;">Loading recordingsâ€¦</p></div>';
             fetch('/api/host/recordings')
                 .then(r => r.json())
                 .then(groups => {
@@ -3372,7 +3806,7 @@
                         itemsDiv.className = 'recording-items';
                         let tableRows = '';
                         recs.forEach((rec, idx) => {
-                            const dur = rec.durationSeconds ? rec.durationSeconds + 's' : '—';
+                            const dur = rec.durationSeconds ? rec.durationSeconds + 's' : 'â€”';
                             const sz  = rec.fileSize ? (rec.fileSize / 1024).toFixed(1) + ' KB' : '';
                             const tr  = rec.transcript ? `<div class="transcript-preview-inline"><span class="transcript-label">Transcript:</span><span class="transcript-text-preview">${_escHtml(rec.transcript)}</span></div>` : '<span class="no-transcript">No transcript</span>';
                             tableRows += `
@@ -3383,10 +3817,24 @@
                                         <span>${sz}</span>
                                         <span><i class="fas fa-calendar"></i>${_escHtml(rec.createdAt)}</span>
                                     </div>
-                                    <div class="recording-actions-btns" style="margin-top:8px;">
-                                        <button class="btn-play-recording" onclick="dashTogglePlay('dash-audio-${rec.id}', this)"><i class="fas fa-play"></i> Play</button>
-                                        <a href="${rec.downloadUrl}" download class="btn-download-recording"><i class="fas fa-download"></i> Download</a>
-                                        <button class="btn-delete-recording" onclick="deleteRecording(${rec.id})"><i class="fas fa-trash"></i> Delete</button>
+                                    <div class="recording-actions-btns" role="group" aria-label="Recording actions" style="margin-top:8px;">
+                                        <button type="button" class="btn-play-recording"
+                                                onclick="dashTogglePlay('dash-audio-${rec.id}', this)"
+                                                aria-label="Play recording" title="Play recording">
+                                            <i class="fas fa-play" aria-hidden="true"></i>
+                                            <span class="btn-label">Play</span>
+                                        </button>
+                                        <a href="${rec.downloadUrl}" download class="btn-download-recording"
+                                           aria-label="Download recording" title="Download recording">
+                                            <i class="fas fa-download" aria-hidden="true"></i>
+                                            <span class="btn-label">Download</span>
+                                        </a>
+                                        <button type="button" class="btn-delete-recording"
+                                                onclick="deleteRecording(${rec.id})"
+                                                aria-label="Delete recording" title="Delete recording">
+                                            <i class="fas fa-trash-alt" aria-hidden="true"></i>
+                                            <span class="btn-label">Delete</span>
+                                        </button>
                                         <audio id="dash-audio-${rec.id}" src="${rec.playUrl}" preload="none" style="display:none;" onended="dashResetPlay('dash-audio-${rec.id}')"></audio>
                                     </div>
                                 </td>
@@ -3651,9 +4099,9 @@
             const btn = document.getElementById('startMeetingBtn');
 
             if (!meetingActive) {
-                // ── START MEETING via API ──
+                // â”€â”€ START MEETING via API â”€â”€
                 btn.disabled = true;
-                btn.innerHTML = '<span>Starting…</span>';
+                btn.innerHTML = '<span>Startingâ€¦</span>';
 
                 fetchJsonSafe('/api/host/quick-meeting/start', { method: 'POST' })
                     .then(({ response, body }) => {
@@ -3697,8 +4145,8 @@
                             showToast('Meeting started! Code: ' + data.meetingCode, 'success');
                             // Update status bar
                             const _si1 = document.getElementById('meetingStatusInfo');
-                            if (_si1) _si1.innerHTML = '<span class="status-text">🟢 Live — Code: <strong>' + data.meetingCode + '</strong></span>';
-                            // ── Start meeting IN the dashboard (no redirect) ──
+                            if (_si1) _si1.innerHTML = '<span class="status-text">ðŸŸ¢ Live â€” Code: <strong>' + data.meetingCode + '</strong></span>';
+                            // â”€â”€ Start meeting IN the dashboard (no redirect) â”€â”€
                             if (typeof initDashboardMeeting === 'function') {
                                 initDashboardMeeting(data.meetingCode);
                             } else {
@@ -3718,11 +4166,11 @@
                     });
 
             } else {
-                // ── END MEETING via API ──
+                // â”€â”€ END MEETING via API â”€â”€
                 if (!currentMeetingId) { resetMeetingUI(); return; }
 
                 btn.disabled = true;
-                btn.innerHTML = '<span>Ending…</span>';
+                btn.innerHTML = '<span>Endingâ€¦</span>';
 
                 fetchJsonSafe('/api/host/quick-meeting/end', {
                     method: 'POST',
@@ -3755,7 +4203,7 @@
             const _si2 = document.getElementById('meetingStatusInfo');
             if (_si2) _si2.innerHTML = '<span class="status-text">Meeting not started</span>';
 
-            // ── Disconnect WebRTC + WebSocket ──
+            // â”€â”€ Disconnect WebRTC + WebSocket â”€â”€
             if (typeof cleanupDashboardMeeting === 'function') {
                 cleanupDashboardMeeting();
             }
@@ -3786,7 +4234,7 @@
                 }, 4000);
             });
 
-            // ── Auto-resume: if a live meeting already exists (page refresh / navigation) ──
+            // â”€â”€ Auto-resume: if a live meeting already exists (page refresh / navigation) â”€â”€
             // The server embeds the live meeting code in dashMeetingData; reconnect automatically.
             var dmEl = document.getElementById('dashMeetingData');
             var liveMeetingCode = dmEl ? dmEl.dataset.liveMeetingCode : '';
@@ -3803,7 +4251,7 @@
                     btn.style.background = 'linear-gradient(135deg, #ef4444, #dc2626)';
                 }
                 var _si = document.getElementById('meetingStatusInfo');
-                if (_si) _si.innerHTML = '<span class="status-text">🟢 Live — Code: <strong>' + liveMeetingCode + '</strong></span>';
+                if (_si) _si.innerHTML = '<span class="status-text">ðŸŸ¢ Live â€” Code: <strong>' + liveMeetingCode + '</strong></span>';
 
                 switchTab('meeting-controls');
                 initDashboardMeeting(liveMeetingCode);
@@ -3895,14 +4343,14 @@
 
         function getShareMessage() {
             const appUrl = window.location.origin;
-            return `🎓 *Student Login Credentials*
+            return `ðŸŽ“ *Student Login Credentials*
 
-📱 *App URL:* ${appUrl}/student/login
+ðŸ“± *App URL:* ${appUrl}/student/login
 
-👤 *Student Name:* ${currentShareStudent.name}
-🏫 *Teacher Name:* ${teacherNameForShare}
-👤 *Username:* ${currentShareStudent.username}
-🔑 *Password:* ${currentShareStudent.password}
+ðŸ‘¤ *Student Name:* ${currentShareStudent.name}
+ðŸ« *Teacher Name:* ${teacherNameForShare}
+ðŸ‘¤ *Username:* ${currentShareStudent.username}
+ðŸ”‘ *Password:* ${currentShareStudent.password}
 
 _Please login using the above credentials._`;
         }
@@ -4176,7 +4624,7 @@ _Please login using the above credentials._`;
             if (isBroadcasting) {
                 btn.style.background = 'linear-gradient(135deg, #22c55e, #16a34a)';
                 const _si3 = document.getElementById('meetingStatusInfo');
-                if (_si3) _si3.innerHTML = '<span class="status-text">🔴 Broadcasting to students...</span>';
+                if (_si3) _si3.innerHTML = '<span class="status-text">ðŸ”´ Broadcasting to students...</span>';
             } else {
                 btn.style.background = 'linear-gradient(135deg, #6366f1, #8b5cf6)';
                 const _si4 = document.getElementById('meetingStatusInfo');
@@ -4375,7 +4823,7 @@ _Please login using the above credentials._`;
                 return;
             }
 
-            // Build ISO local datetime strings (no timezone shift — server stores local time)
+            // Build ISO local datetime strings (no timezone shift â€” server stores local time)
             const startTime = fromDate + 'T' + fromTime + ':00';            // e.g. 2026-04-15T10:00:00
             const endTime   = (toDate && toTime) ? toDate + 'T' + toTime + ':00' : null;
 
@@ -4756,8 +5204,8 @@ _Please login using the above credentials._`;
             transform: translateY(-1px);
         }
 
-        /* ===== Dashboard Meeting — Participant Cards ===== */
-        /* ===== Dashboard Meeting — Participant Cards Grid ===== */
+        /* ===== Dashboard Meeting â€” Participant Cards ===== */
+        /* ===== Dashboard Meeting â€” Participant Cards Grid ===== */
         .dm-speaking-row {
             padding: 10px 14px 8px;
             border-bottom: 1px solid rgba(255,255,255,0.08);
@@ -4865,7 +5313,7 @@ _Please login using the above credentials._`;
             100% { transform: scale(0.98); opacity: 0; box-shadow: 0 0 0 18px rgba(239,68,68,0); }
         }
 
-        /* ===== Dais — Speaking Spotlight ===== */
+        /* ===== Dais â€” Speaking Spotlight ===== */
         .dm-dais-row {
             border-bottom: 1px solid rgba(245,158,11,0.2);
             background: linear-gradient(180deg, rgba(17,24,39,0.85) 0%, rgba(10,15,30,0.6) 100%);
@@ -5163,7 +5611,7 @@ _Please login using the above credentials._`;
             100% { transform: scale(0.9); opacity: 0; box-shadow: 0 0 0 26px rgba(245, 158, 11, 0); }
         }
 
-        /* ===== Dashboard Meeting — Chat Messages ===== */
+        /* ===== Dashboard Meeting â€” Chat Messages ===== */
         .dm-msg {
             display: flex; flex-direction: column;
             max-width: 72%; align-self: flex-start;

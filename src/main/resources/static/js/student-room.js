@@ -116,10 +116,23 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // ===== Audio init =====
+// Multilingual STT works MUCH better with 16 kHz mono + all DSP enhancers on.
+// These constraints are advisory — browsers ignore unsupported keys without
+// breaking, so it's safe to ask for everything.
 async function initAudio() {
     try {
         localStream = await navigator.mediaDevices.getUserMedia({
-            audio: { echoCancellation: true, noiseSuppression: true },
+            audio: {
+                echoCancellation: true,
+                noiseSuppression: true,
+                autoGainControl: true,
+                channelCount: 1,            // mono
+                sampleRate: 16000,          // 16 kHz – industry standard for STT
+                sampleSize: 16,
+                // Disable any browser-side voice processing that could hurt non-English
+                googHighpassFilter: true,
+                googTypingNoiseDetection: false
+            },
             video: false
         });
     } catch (err) {
@@ -1253,6 +1266,185 @@ function _srShowLiveCapture(text) {
     }
 }
 
+// ════════════════════════════════════════════════════════════════════════════
+//   MULTILINGUAL SPEECH-TO-TEXT ENGINE
+//   Designed for Indic code-switching: English (India), Telugu, Hindi.
+//
+//   Strategy (Web Speech API constraints — only one language at a time):
+//   1. Start with the student's preferred / last-best language
+//   2. Track confidence of every final result
+//   3. If confidence stays below CONFIDENCE_THRESHOLD for LOW_CONF_WINDOW
+//      consecutive results, ROTATE to the next language hint and retry
+//   4. Once a language gives consistently high confidence, lock it in for
+//      this speaker and remember in localStorage (per-student diarization-lite)
+// ════════════════════════════════════════════════════════════════════════════
+
+const STT_LANGUAGE_HINTS    = ['en-IN', 'te-IN', 'hi-IN'];   // rotation order
+const STT_CONFIDENCE_THRESHOLD = 0.60;                        // < 60 % = "low"
+const STT_LOW_CONF_WINDOW   = 3;                              // 3 strikes ⇒ rotate
+const STT_HIGH_CONF_LOCK    = 0.80;                           // ≥ 80 % ⇒ lock language
+
+let _sttCurrentLang     = null;     // active recognition language
+let _sttRecentConfs     = [];       // sliding window of last N confidences
+let _sttRotating        = false;    // suppress restart loop while we swap lang
+let _sttIsAutoMode      = true;     // toggled off when user picks a fixed lang
+
+/**
+ * Common conversational filler words that confuse STT and add no meaning.
+ * Stripped only when they appear standalone (single-word utterances) or
+ * repeated as a stutter — never inside meaningful sentences.
+ */
+const STT_FILLERS = new Set([
+    // English
+    'uh', 'uhh', 'uhm', 'um', 'umm', 'er', 'err', 'hmm', 'huh', 'like', 'yeah', 'yup',
+    // Hindi
+    'matlab', 'yaani', 'haan', 'na', 'to', 'phir', 'arre', 'arrey', 'bhi',
+    // Telugu
+    'anaga', 'mari', 'kada', 'ki', 'le', 'ah', 'ammo', 'em', 'ante',
+    // Generic acknowledgements
+    'ok', 'okay', 'yes', 'no'
+]);
+
+/** True if a final transcript is just a single filler / hesitation. */
+function _isFillerOnly(text) {
+    if (!text) return true;
+    const cleaned = text.toLowerCase().replace(/[^\p{L}\s]/gu, '').trim();
+    if (!cleaned) return true;
+    const tokens = cleaned.split(/\s+/);
+    if (tokens.length > 2) return false;          // real sentence, keep
+    return tokens.every(t => STT_FILLERS.has(t)); // every token is filler ⇒ drop
+}
+
+/**
+ * Returns the active STT language.
+ * Priority: (1) explicit user pick from the dropdown,
+ *           (2) per-speaker remembered best language,
+ *           (3) browser locale,
+ *           (4) fallback 'en-IN'
+ */
+function _getSttLang() {
+    if (_sttCurrentLang) return _sttCurrentLang;
+    const explicit = localStorage.getItem('sttLang');
+    if (explicit && explicit !== 'auto') return explicit;
+    const perSpeaker = localStorage.getItem('sttLang_' + USER_NAME);
+    if (perSpeaker) return perSpeaker;
+    const fallback = navigator.language || 'en-IN';
+    // Map navigator.language to our supported set
+    if (fallback.startsWith('te')) return 'te-IN';
+    if (fallback.startsWith('hi')) return 'hi-IN';
+    return 'en-IN';
+}
+
+/** Remember which language gave high confidence for THIS student. */
+function _rememberSpeakerLang(lang) {
+    if (!lang || !USER_NAME) return;
+    localStorage.setItem('sttLang_' + USER_NAME, lang);
+}
+
+/** Track confidence over a sliding window; return true if we should rotate. */
+function _shouldRotateLanguage(confidence) {
+    _sttRecentConfs.push(confidence || 0);
+    if (_sttRecentConfs.length > STT_LOW_CONF_WINDOW) _sttRecentConfs.shift();
+    if (_sttRecentConfs.length < STT_LOW_CONF_WINDOW) return false;
+    return _sttRecentConfs.every(c => c < STT_CONFIDENCE_THRESHOLD);
+}
+
+/** Cycle to the next language in STT_LANGUAGE_HINTS and restart recognition. */
+function _rotateToNextLanguage() {
+    const cur = _getSttLang();
+    const idx = STT_LANGUAGE_HINTS.indexOf(cur);
+    const next = STT_LANGUAGE_HINTS[(idx + 1) % STT_LANGUAGE_HINTS.length];
+    console.log('[STT] Auto-rotating language', cur, '→', next, '(low confidence)');
+    _sttCurrentLang = next;
+    _sttRecentConfs = [];
+    _sttRotating = true;
+    if (_speechRecognition) {
+        try { _speechRecognition.stop(); } catch (e) {}
+    }
+    // Recreate recogniser with new language
+    _speechRecognition = null;
+    _initSpeechRecognition();
+    if (_speechRecognition && isMicOn && _isMeetingActive) {
+        try { _speechRecognition.start(); } catch (e) {}
+    }
+    _srUpdateSttStatus('Trying ' + next + '…', '#f59e0b');
+    setTimeout(() => { _sttRotating = false; }, 1200);
+}
+
+/** In-memory cache so identical phrases aren't re-translated. */
+const _translationCache = new Map();
+
+/**
+ * Translate `text` from `sourceLang` to English using MyMemory's free public API.
+ * Returns a Promise<{ native: string, english: string }>.
+ *
+ * • If recognition was in English, both fields are the same (English).
+ * • On translation failure, english === native (safe fallback).
+ */
+function _translateToEnglish(text, sourceLang) {
+    if (!text) return Promise.resolve({ native: '', english: '' });
+    const src = (sourceLang || 'en').split('-')[0].toLowerCase();
+    if (src === 'en') return Promise.resolve({ native: text, english: text });
+
+    const cacheKey = src + '|' + text;
+    if (_translationCache.has(cacheKey)) {
+        return Promise.resolve({ native: text, english: _translationCache.get(cacheKey) });
+    }
+
+    const safe = text.length > 480 ? text.slice(0, 480) : text;
+    const url = 'https://api.mymemory.translated.net/get?q=' + encodeURIComponent(safe)
+              + '&langpair=' + encodeURIComponent(src) + '|en';
+
+    return fetch(url, { method: 'GET' })
+        .then(r => r.ok ? r.json() : null)
+        .then(json => {
+            if (json && json.responseData && json.responseData.translatedText) {
+                const t = String(json.responseData.translatedText).trim();
+                if (t && t.toLowerCase() !== 'invalid translation') {
+                    _translationCache.set(cacheKey, t);
+                    return { native: text, english: t };
+                }
+            }
+            return { native: text, english: text };
+        })
+        .catch(err => {
+            console.warn('[Translate] failed, falling back to native:', err);
+            return { native: text, english: text };
+        });
+}
+
+/**
+ * Format final transcript per the requested specification:
+ *   • English-only: "Hello"
+ *   • Non-English:  "నమస్కారం [Hello]"
+ */
+function _formatBilingualTranscript(native, english, sourceLang) {
+    const src = (sourceLang || 'en').split('-')[0].toLowerCase();
+    if (src === 'en' || native === english) return english;
+    return native + ' [' + english + ']';
+}
+
+/**
+ * Supported languages for speech recognition.
+ * 'auto' triggers the auto-rotating multilingual mode.
+ */
+const STT_LANGUAGES = [
+    { code: 'auto',   label: 'Auto-detect (English / Telugu / Hindi)' },
+    { code: 'en-IN',  label: 'English (India)' },
+    { code: 'te-IN',  label: 'తెలుగు (Telugu)' },
+    { code: 'hi-IN',  label: 'हिन्दी (Hindi)' },
+    { code: 'ta-IN',  label: 'தமிழ் (Tamil)' },
+    { code: 'kn-IN',  label: 'ಕನ್ನಡ (Kannada)' },
+    { code: 'ml-IN',  label: 'മലയാളം (Malayalam)' },
+    { code: 'mr-IN',  label: 'मराठी (Marathi)' },
+    { code: 'bn-IN',  label: 'বাংলা (Bengali)' },
+    { code: 'gu-IN',  label: 'ગુજરાતી (Gujarati)' },
+    { code: 'pa-IN',  label: 'ਪੰਜਾਬੀ (Punjabi)' },
+    { code: 'ur-PK',  label: 'اردو (Urdu)' },
+    { code: 'en-US',  label: 'English (US)' },
+    { code: 'en-GB',  label: 'English (UK)' },
+];
+
 function _initSpeechRecognition() {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognition) {
@@ -1262,36 +1454,63 @@ function _initSpeechRecognition() {
     _speechRecognition = new SpeechRecognition();
     _speechRecognition.continuous = true;
     _speechRecognition.interimResults = true;
-    _speechRecognition.lang = 'en-US';
-    _speechRecognition.maxAlternatives = 1;
+    _speechRecognition.lang = _getSttLang();
+    _speechRecognition.maxAlternatives = 5;   // more alternatives helps non-English accuracy
     _speechRecognition.onresult = (event) => {
         _interimText = '';
         for (let i = event.resultIndex; i < event.results.length; i++) {
             if (event.results[i].isFinal) {
-                const sentence = event.results[i][0].transcript.trim();
-                if (!sentence) continue;
-                _transcriptText += sentence + ' ';
+                // Pick best alternative (highest confidence) across maxAlternatives
+                let best = event.results[i][0];
+                for (let a = 1; a < event.results[i].length; a++) {
+                    if ((event.results[i][a].confidence || 0) > (best.confidence || 0)) best = event.results[i][a];
+                }
+                const sentence = best.transcript.trim();
+                const conf = best.confidence || 0;
+                const usedLang = _getSttLang();
+                console.log('[STT] final:', { text: sentence, conf, lang: usedLang });
 
-                // Show a live preview on student's own screen
+                // ── Auto-rotate language on persistent low confidence ──
+                if (_sttIsAutoMode && _shouldRotateLanguage(conf)) {
+                    _rotateToNextLanguage();
+                    continue;
+                }
+                // ── Lock in the current language for this speaker on high confidence ──
+                if (conf >= STT_HIGH_CONF_LOCK) _rememberSpeakerLang(usedLang);
+
+                if (!sentence) continue;
+                if (_isFillerOnly(sentence)) {
+                    console.log('[STT] dropped filler:', sentence);
+                    continue;
+                }
+
                 _srShowLiveCapture(sentence);
 
-                // Always send — isTeacher: false so server creates bundled card, not teacher card
-                const payload = JSON.stringify({
-                    text:        sentence,
-                    speakerName: USER_NAME,
-                    isTeacher:   false,
-                    timestamp:   new Date().toISOString()
+                // Translate (if non-English) and emit native + english bracket format
+                _translateToEnglish(sentence, usedLang).then(({ native, english }) => {
+                    const formatted = _formatBilingualTranscript(native, english, usedLang);
+                    _transcriptText += formatted + ' ';
+
+                    const payload = JSON.stringify({
+                        text:           formatted,
+                        nativeText:     native,
+                        englishText:    english,
+                        speakerName:    USER_NAME,
+                        sourceLanguage: usedLang,
+                        confidence:     conf,
+                        isTeacher:      false,
+                        timestamp:      new Date().toISOString()
+                    });
+                    if (stompClient && stompClient.connected) {
+                        stompClient.send('/app/transcript/' + MEETING_CODE, {}, payload);
+                        console.log('[STT] Sent:', formatted);
+                    } else {
+                        _pendingTranscripts.push(payload);
+                        console.log('[STT] Buffered (WS not ready):', formatted);
+                    }
                 });
-                if (stompClient && stompClient.connected) {
-                    stompClient.send('/app/transcript/' + MEETING_CODE, {}, payload);
-                    console.log('[STT] Sent transcript:', sentence);
-                } else {
-                    _pendingTranscripts.push(payload);
-                    console.log('[STT] Buffered transcript (WS not ready):', sentence);
-                }
             } else {
                 _interimText += event.results[i][0].transcript;
-                // Show interim text as hint (greyed out) on student screen
                 _srShowInterim(_interimText);
             }
         }
@@ -1327,11 +1546,47 @@ function _startTranscription() {
     _interimText = '';
     try {
         _speechRecognition.start();
-        console.log('Speech recognition started');
+        console.log('Speech recognition started, lang:', _getSttLang());
     } catch(e) {
         console.warn('Speech start error:', e);
-        // If already started, that's OK
     }
+}
+
+/**
+ * Change speech recognition language at runtime.
+ *
+ * Special value 'auto' enables multilingual auto-detect:
+ *   • Cycles through STT_LANGUAGE_HINTS until confidence is consistently high
+ *   • Remembers the locked-in language per speaker for next session
+ */
+function srChangeLang(code) {
+    localStorage.setItem('sttLang', code);
+    _sttRecentConfs = [];
+
+    if (code === 'auto') {
+        _sttIsAutoMode = true;
+        // Start with last-known-good language for this speaker, or 'en-IN'
+        _sttCurrentLang = localStorage.getItem('sttLang_' + USER_NAME) || 'en-IN';
+    } else {
+        _sttIsAutoMode = false;
+        _sttCurrentLang = code;
+    }
+
+    if (_speechRecognition) {
+        try { _speechRecognition.stop(); } catch(e) {}
+    }
+    _speechRecognition = null;
+    _initSpeechRecognition();
+    if (_speechRecognition && isMicOn && _isMeetingActive) {
+        try { _speechRecognition.start(); } catch(e) {}
+    }
+    console.log('[STT] Language mode:', code, '→ active:', _sttCurrentLang);
+
+    const label = (STT_LANGUAGES.find(l => l.code === code) || {}).label || code;
+    _srUpdateSttStatus('Lang: ' + label, '#818cf8');
+    setTimeout(() => {
+        if (_sttRunning) _srUpdateSttStatus('Listening…', '#22c55e');
+    }, 2000);
 }
 
 // Stop recognition (async — results may still arrive after this call)
