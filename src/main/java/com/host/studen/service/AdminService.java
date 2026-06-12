@@ -173,7 +173,7 @@ public class AdminService {
         // Delete all students of this teacher
         List<User> students = userRepository.findByTeacherNameAndRole(teacherName, Role.STUDENT);
         for (User student : students) {
-            // Delete student's recordings, transcripts, notifications
+            // Delete student's notifications
             notificationRepository.deleteByUser(student);
             userRepository.delete(student);
         }

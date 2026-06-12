@@ -2,12 +2,14 @@ package com.host.studen.service;
 
 import com.host.studen.model.Recording;
 import com.host.studen.model.User;
+import com.host.studen.repository.RecordingRepository;
 import com.twilio.Twilio;
 import com.twilio.exception.ApiException;
 import com.twilio.rest.api.v2010.account.Message;
 import com.twilio.type.PhoneNumber;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
@@ -23,8 +25,10 @@ import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Deque;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedDeque;
@@ -69,7 +73,17 @@ public class WhatsAppNotificationService {
     @Value("${app.public-url:http://localhost:8080}")
     private String publicUrl;
 
+    /** CallMeBot transient failures — retry with exponential backoff (Copilot-style worker reliability, in-process). */
+    @Value("${app.whatsapp.callmebot.max-send-attempts:3}")
+    private int callmebotMaxSendAttempts;
+
+    @Value("${app.whatsapp.callmebot.initial-backoff-ms:1000}")
+    private long callmebotInitialBackoffMs;
+
     private boolean twilioReady = false;
+
+    @Autowired
+    private RecordingRepository recordingRepository;
 
     private final HttpClient httpClient = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(10))
@@ -83,6 +97,11 @@ public class WhatsAppNotificationService {
 
     @PostConstruct
     public void init() {
+        // Sanitize credentials — env vars often arrive with stray spaces
+        // (e.g. "+1 816 819 3622"), which Twilio rejects with error 21212.
+        accountSid = accountSid == null ? "" : accountSid.trim();
+        authToken  = authToken  == null ? "" : authToken.trim();
+        fromNumber = sanitizeFromNumber(fromNumber);
         if (!masterEnabled) {
             log.info("WhatsApp notifications globally disabled (app.whatsapp.enabled=false)");
             return;
@@ -105,6 +124,35 @@ public class WhatsAppNotificationService {
 
     // ── Public API ────────────────────────────────────────────────────────────
 
+    /** Payload fragment for {@code /topic/recording/{meetingCode}} WebSocket messages. */
+    public record RecordingWhatsappHint(String code, String message) {}
+
+    /**
+     * When a recording is saved, the host UI can show a toast if the teacher
+     * opted into WhatsApp alerts but setup is incomplete (number or provider).
+     *
+     * @return {@code null} when no reminder is needed
+     */
+    public RecordingWhatsappHint hintForRecordingSavedEvent(User teacher) {
+        if (!masterEnabled) {
+            return null;
+        }
+        if (teacher == null || !teacher.isWhatsappNotificationsEnabled()) {
+            return null;
+        }
+        if (normaliseNumber(teacher.getWhatsappNumber()) == null) {
+            return new RecordingWhatsappHint(
+                    "NUMBER_MISSING",
+                    "WhatsApp number is not configured. Add your number under Dashboard → WhatsApp Notifications to receive automatic recording alerts.");
+        }
+        if (!twilioReady && isBlank(teacher.getWhatsappApiKey())) {
+            return new RecordingWhatsappHint(
+                    "PROVIDER_MISSING",
+                    "WhatsApp alerts are on but no message provider is configured. Add your CallMeBot API key in WhatsApp settings, or ask your admin to configure Twilio.");
+        }
+        return null;
+    }
+
     /**
      * Async hook called by RecordingService AFTER a recording has been
      * persisted. Builds the message with a clickable link to the recording,
@@ -118,20 +166,20 @@ public class WhatsAppNotificationService {
             // pollute the dashboard's "Recent Notifications" panel with rows
             // for every recording when notifications simply weren't requested.
             if (!masterEnabled) {
-                log.debug("WhatsApp silent-skip: globally disabled (recording {})", safeId(recording));
+                log.info("WhatsApp skip: globally disabled (recording {})", safeId(recording));
                 return;
             }
             if (teacher == null) {
-                log.debug("WhatsApp silent-skip: teacher null (recording {})", safeId(recording));
+                log.info("WhatsApp skip: teacher null (recording {})", safeId(recording));
                 return;
             }
             if (!teacher.isWhatsappNotificationsEnabled()) {
-                log.debug("WhatsApp silent-skip: teacher '{}' has notifications off", teacher.getUsername());
+                log.info("WhatsApp skip: teacher '{}' has notifications off", teacher.getUsername());
                 return;
             }
             String to = normaliseNumber(teacher.getWhatsappNumber());
             if (to == null) {
-                log.debug("WhatsApp silent-skip: teacher '{}' has no/invalid number ('{}')",
+                log.info("WhatsApp skip: teacher '{}' has no/invalid number ('{}')",
                         teacher.getUsername(), teacher.getWhatsappNumber());
                 return;
             }
@@ -140,12 +188,15 @@ public class WhatsAppNotificationService {
             // explicitly opted in and a real send is being attempted.
             String recordingUrl = buildRecordingUrl(recording);
             String body = buildRecordingMessage(student, recordingUrl);
-            dispatch(teacher, to, body, recording, student);
+            String mediaUrl = buildRecordingMediaUrl(recording);
+            DispatchOutcome outcome = dispatch(teacher, to, body, mediaUrl, recording, student);
+            persistRecordingWhatsappOutbound(recording, outcome);
         } catch (Exception e) {
             log.error("WhatsApp: unexpected error notifying teacher on recording {}: {}",
                     safeId(recording), e.getMessage(), e);
             logStatus(teacher, recording, student, NotificationResult.FAILURE,
                     "Unexpected error: " + e.getMessage());
+            persistRecordingWhatsappOutboundFailure(recording, "Unexpected error: " + e.getMessage());
         }
     }
 
@@ -182,7 +233,7 @@ public class WhatsAppNotificationService {
         }
 
         String body = "Hello, your recording is ready: " + recordingUrl;
-        return dispatch(teacher, to, body, null, null);
+        return dispatch(teacher, to, body, null, null).summary;
     }
 
     /** Synchronous test send — returns a human-readable result string. */
@@ -213,7 +264,7 @@ public class WhatsAppNotificationService {
         String body = "Hello " + safeName(teacher) +
                 ", your WhatsApp notifications are working. Dashboard: " + dashboard;
 
-        return dispatch(teacher, to, body, null, null);
+        return dispatch(teacher, to, body, null, null).summary;
     }
 
     /** Returns the last N notification attempts for the given teacher (newest first). */
@@ -238,49 +289,132 @@ public class WhatsAppNotificationService {
     public void applyTwilioStatusCallback(String messageSid, String messageState,
                                           String errorCode, String errorMessage) {
         if (isBlank(messageSid) || isBlank(messageState)) return;
+        NotificationLifecycle newState = mapTwilioState(messageState);
+        String rowDetail = buildTwilioCallbackRowDetail(newState, messageState, errorCode, errorMessage);
+
         Long teacherId = sidToTeacher.get(messageSid);
-        if (teacherId == null) {
-            log.debug("Twilio callback for unknown SID {} (state={}). Ignoring.", messageSid, messageState);
+        if (teacherId != null) {
+            Deque<NotificationStatus> deque = statusByTeacher.get(teacherId);
+            if (deque != null) {
+                for (NotificationStatus s : deque) {
+                    if (messageSid.equals(s.getProviderMessageId())) {
+                        s.lifecycle = newState;
+                        s.result = newState.toResult();
+                        s.message = rowDetail;
+                        s.lastUpdated = LocalDateTime.now();
+                        log.info("Twilio callback: SID={} → {} (teacher {})", messageSid, newState, teacherId);
+                        break;
+                    }
+                }
+            }
+        } else {
+            log.debug("Twilio callback: SID={} not in sid→teacher map (restart?). Updating recording row if present.", messageSid);
+        }
+        syncRecordingWhatsappFromTwilio(messageSid, newState, rowDetail);
+    }
+
+    private String buildTwilioCallbackRowDetail(NotificationLifecycle newState, String messageState,
+                                                String errorCode, String errorMessage) {
+        if (newState == NotificationLifecycle.FAILED || newState == NotificationLifecycle.UNDELIVERED) {
+            if (!isBlank(errorMessage)) {
+                return errorMessage + (isBlank(errorCode) ? "" : " [" + errorCode + "]");
+            }
+            return "Twilio reports state=" + messageState + (isBlank(errorCode) ? "" : " (code " + errorCode + ")");
+        }
+        return "Twilio: " + newState.label();
+    }
+
+    private void syncRecordingWhatsappFromTwilio(String messageSid, NotificationLifecycle lifecycle, String detail) {
+        try {
+            recordingRepository.findByWhatsappOutboundMessageId(messageSid).ifPresent(r -> {
+                r.setWhatsappOutboundStatus(twilioLifecycleToOutboundStatus(lifecycle));
+                r.setWhatsappOutboundDetail(truncateDetail(detail));
+                r.setWhatsappOutboundUpdatedAt(LocalDateTime.now());
+                recordingRepository.save(r);
+            });
+        } catch (Exception e) {
+            log.warn("Could not persist Twilio callback for SID {}: {}", messageSid, e.getMessage());
+        }
+    }
+
+    private static String twilioLifecycleToOutboundStatus(NotificationLifecycle lifecycle) {
+        if (lifecycle == null) {
+            return "UNKNOWN";
+        }
+        return switch (lifecycle) {
+            case FAILED, UNDELIVERED -> "FAILED";
+            case READ -> "READ";
+            case DELIVERED -> "DELIVERED";
+            case SENT, SENDING -> "SENT";
+            case QUEUED -> "QUEUED";
+        };
+    }
+
+    private String truncateDetail(String s) {
+        if (s == null) {
+            return null;
+        }
+        String t = s.trim();
+        return t.length() <= 512 ? t : t.substring(0, 509) + "...";
+    }
+
+    private void persistRecordingWhatsappOutbound(Recording recordingRef, DispatchOutcome outcome) {
+        if (recordingRef == null || recordingRef.getId() == null || outcome == null) {
             return;
         }
-        Deque<NotificationStatus> deque = statusByTeacher.get(teacherId);
-        if (deque == null) return;
-
-        NotificationLifecycle newState = mapTwilioState(messageState);
-        for (NotificationStatus s : deque) {
-            if (messageSid.equals(s.getProviderMessageId())) {
-                s.lifecycle = newState;
-                s.result = newState.toResult();
-                if (newState == NotificationLifecycle.FAILED || newState == NotificationLifecycle.UNDELIVERED) {
-                    String detail = !isBlank(errorMessage)
-                            ? errorMessage + (isBlank(errorCode) ? "" : " [" + errorCode + "]")
-                            : ("Twilio reports state=" + messageState + (isBlank(errorCode) ? "" : " (code " + errorCode + ")"));
-                    s.message = detail;
+        try {
+            recordingRepository.findById(recordingRef.getId()).ifPresent(r -> {
+                if (outcome.success) {
+                    r.setWhatsappOutboundStatus("SENT");
+                    r.setWhatsappOutboundMessageId(outcome.twilioSid);
+                    r.setWhatsappOutboundDetail(truncateDetail(outcome.summary));
                 } else {
-                    s.message = "Twilio: " + newState.label();
+                    r.setWhatsappOutboundStatus("FAILED");
+                    r.setWhatsappOutboundMessageId(null);
+                    r.setWhatsappOutboundDetail(truncateDetail(outcome.summary));
                 }
-                s.lastUpdated = LocalDateTime.now();
-                log.info("Twilio callback: SID={} → {} (teacher {})", messageSid, newState, teacherId);
-                return;
-            }
+                r.setWhatsappOutboundUpdatedAt(LocalDateTime.now());
+                recordingRepository.save(r);
+            });
+        } catch (Exception e) {
+            log.warn("Could not persist WhatsApp outbound row for recording {}: {}",
+                    recordingRef.getId(), e.getMessage());
+        }
+    }
+
+    private void persistRecordingWhatsappOutboundFailure(Recording recordingRef, String message) {
+        if (recordingRef == null || recordingRef.getId() == null) {
+            return;
+        }
+        try {
+            recordingRepository.findById(recordingRef.getId()).ifPresent(r -> {
+                r.setWhatsappOutboundStatus("FAILED");
+                r.setWhatsappOutboundDetail(truncateDetail(message));
+                r.setWhatsappOutboundUpdatedAt(LocalDateTime.now());
+                recordingRepository.save(r);
+            });
+        } catch (Exception e) {
+            log.warn("Could not persist WhatsApp failure for recording {}: {}", recordingRef.getId(), e.getMessage());
         }
     }
 
     // ── Provider selection & dispatch ────────────────────────────────────────
 
     /**
-     * Chooses Twilio first (if configured), falls back to CallMeBot. Returns a
-     * human-readable string suitable for the test-send UI. Side-effects: writes
+     * Chooses Twilio first (if configured), falls back to CallMeBot. Side-effects: writes
      * a row into the per-teacher status log so the dashboard reflects state.
      */
-    private String dispatch(User teacher, String to, String body,
-                            Recording recording, User student) {
+    private DispatchOutcome dispatch(User teacher, String to, String body,
+                                     Recording recording, User student) {
+        return dispatch(teacher, to, body, null, recording, student);
+    }
+
+    private DispatchOutcome dispatch(User teacher, String to, String body, String mediaUrl,
+                                     Recording recording, User student) {
         // 1) Twilio first when admin has configured it
         if (twilioReady) {
-            TwilioSendResult tr = sendViaTwilio(to, body);
+            TwilioSendResult tr = sendViaTwilio(to, body, mediaUrl);
             if (tr.success) {
-                // Surface Twilio acceptance as "Sent" immediately. The async webhook
-                // upgrades it to Delivered → Read as the recipient's device confirms.
                 NotificationStatus s = logStatus(teacher, recording, student,
                         NotificationResult.SUCCESS,
                         "Twilio accepted — awaiting delivery receipt");
@@ -290,44 +424,45 @@ public class WhatsAppNotificationService {
                 if (tr.messageSid != null && teacher.getId() != null) {
                     sidToTeacher.put(tr.messageSid, teacher.getId());
                 }
-                return "Test message sent successfully to " + to + " via Twilio (SID " + tr.messageSid + ")";
+                return DispatchOutcome.ok(
+                        "Test message sent successfully to " + to + " via Twilio (SID " + tr.messageSid + ")",
+                        tr.messageSid);
             }
-            // Twilio failed → try CallMeBot if the teacher has a key, else surface the error
             if (!isBlank(teacher.getWhatsappApiKey())) {
                 log.warn("Twilio failed for teacher '{}', trying CallMeBot. Reason: {}",
                         teacher.getUsername(), tr.error);
             } else {
                 logStatus(teacher, recording, student, NotificationResult.FAILURE,
                         "Twilio: " + tr.error);
-                return "Twilio send failed: " + tr.error;
+                return DispatchOutcome.fail("Twilio send failed: " + tr.error);
             }
         }
 
-        // 2) CallMeBot fallback — per-teacher API key
+        // 2) CallMeBot fallback — per-teacher API key (with bounded retries)
         if (!isBlank(teacher.getWhatsappApiKey())) {
-            String r = sendViaCallMeBot(to, body, teacher.getWhatsappApiKey());
+            String r = sendViaCallMeBotWithBackoff(to, body, teacher.getWhatsappApiKey());
             if (r.startsWith("OK")) {
                 NotificationStatus s = logStatus(teacher, recording, student,
                         NotificationResult.SUCCESS, "CallMeBot accepted");
-                // CallMeBot has no real delivery receipt — acceptance is the final
-                // state we ever see, so label it as "Sent" too.
                 s.lifecycle = NotificationLifecycle.SENT;
                 s.provider = "CallMeBot";
-                return "Test message sent successfully to " + to + " via CallMeBot";
+                return DispatchOutcome.ok(
+                        "Test message sent successfully to " + to + " via CallMeBot", null);
             }
             logStatus(teacher, recording, student, NotificationResult.FAILURE,
                     "CallMeBot: " + r);
-            return "CallMeBot failed: " + r;
+            return DispatchOutcome.fail("CallMeBot failed: " + r);
         }
 
         logStatus(teacher, recording, student, NotificationResult.FAILURE,
                 "WhatsApp service is unavailable — please contact your administrator " +
                 "(server-side Twilio credentials are not configured).");
-        return "WhatsApp is currently unavailable on this server. Please contact your administrator.";
+        return DispatchOutcome.fail(
+                "WhatsApp is currently unavailable on this server. Please contact your administrator.");
     }
 
     /** Twilio WhatsApp send — single API call. */
-    private TwilioSendResult sendViaTwilio(String toNumber, String body) {
+    private TwilioSendResult sendViaTwilio(String toNumber, String body, String mediaUrl) {
         try {
             // Use var so we don't have to depend on Twilio's exact creator class name
             // (which has moved across major versions of the SDK).
@@ -336,13 +471,19 @@ public class WhatsAppNotificationService {
                     new PhoneNumber(fromNumber.startsWith("whatsapp:") ? fromNumber : "whatsapp:" + fromNumber),
                     body
             );
+            // Attach the audio clip when a publicly fetchable media URL is available.
+            if (!isBlank(mediaUrl)) {
+                creator.setMediaUrl(Collections.singletonList(URI.create(mediaUrl)));
+                log.info("Twilio: attaching audio media {}", mediaUrl);
+            }
             // Wire delivery receipts back to our webhook (optional — only when public URL is set).
             String callback = effectiveCallbackUrl();
             if (!isBlank(callback)) {
                 creator.setStatusCallback(URI.create(callback));
             }
             Message msg = creator.create();
-            log.info("Twilio send OK to {} (SID: {}, status={})", toNumber, msg.getSid(), msg.getStatus());
+            log.info("Twilio send OK to {} (SID: {}, status={}, media={})",
+                    toNumber, msg.getSid(), msg.getStatus(), !isBlank(mediaUrl));
             return TwilioSendResult.ok(msg.getSid());
         } catch (ApiException e) {
             log.error("Twilio API error to {}: [{}] {}", toNumber, e.getCode(), e.getMessage());
@@ -394,6 +535,46 @@ public class WhatsAppNotificationService {
         }
     }
 
+    /**
+     * Bounded retries for CallMeBot (in-process substitute for BullMQ workers when
+     * hitting transient network or rate-limit responses).
+     */
+    private String sendViaCallMeBotWithBackoff(String toNumber, String body, String apiKey) {
+        int attempts = Math.max(1, callmebotMaxSendAttempts);
+        long waitMs = Math.max(200L, callmebotInitialBackoffMs);
+        String last = "";
+        for (int i = 0; i < attempts; i++) {
+            last = sendViaCallMeBot(toNumber, body, apiKey);
+            if (last.startsWith("OK")) {
+                return last;
+            }
+            if (i < attempts - 1 && isTransientCallmeBotFailure(last)) {
+                log.info("CallMeBot retry {}/{} after transient failure: {}", i + 1, attempts, last);
+                try {
+                    Thread.sleep(waitMs);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+                waitMs = Math.min(waitMs * 2, 30_000L);
+            } else {
+                break;
+            }
+        }
+        return last;
+    }
+
+    private static boolean isTransientCallmeBotFailure(String response) {
+        if (response == null) {
+            return false;
+        }
+        String lower = response.toLowerCase();
+        return lower.contains("network error")
+                || lower.contains("rate limit")
+                || lower.contains("timed out")
+                || lower.contains("timeout");
+    }
+
     private String effectiveCallbackUrl() {
         if (!isBlank(configuredCallbackUrl)) return configuredCallbackUrl.trim();
         // Auto-derive from public URL when not explicitly set.
@@ -413,6 +594,57 @@ public class WhatsAppNotificationService {
      */
     private String buildRecordingUrl(Recording recording) {
         return publicUrl.replaceAll("/+$", "") + "/host/recordings#rec-" + recording.getId();
+    }
+
+    /**
+     * Builds the public, unauthenticated URL Twilio fetches the audio clip from
+     * (served by {@code PublicRecordingController}). The UUID disk filename in
+     * the path doubles as an unguessable access token.
+     *
+     * @return {@code null} when the clip cannot be attached: public URL not set
+     *         (Twilio cannot reach localhost) or the audio format is not
+     *         accepted by WhatsApp — in that case the text + link still goes out.
+     */
+    private String buildRecordingMediaUrl(Recording recording) {
+        if (recording == null || recording.getId() == null || isBlank(recording.getFilePath())) {
+            return null;
+        }
+        if (isBlank(publicUrl) || publicUrl.contains("localhost") || publicUrl.contains("127.0.0.1")) {
+            log.info("WhatsApp: audio clip NOT attached for recording {} — app.public-url is localhost/unset. " +
+                     "Set APP_PUBLIC_URL to a public https URL so Twilio can fetch the media.", recording.getId());
+            return null;
+        }
+        String diskFileName = java.nio.file.Paths.get(recording.getFilePath()).getFileName().toString();
+        if (!isWhatsappSupportedAudio(diskFileName)) {
+            log.info("WhatsApp: audio clip NOT attached for recording {} — format '{}' is not supported by " +
+                     "WhatsApp media (supported: m4a/mp4/ogg/mp3/aac/amr). Sending text + link only.",
+                    recording.getId(), diskFileName);
+            return null;
+        }
+        return publicUrl.replaceAll("/+$", "") + "/api/public/recordings/" + recording.getId() + "/" + diskFileName;
+    }
+
+    /**
+     * Strips spaces/dashes/parentheses from the configured Twilio sender so
+     * "+1 816 819 3622" becomes "+18168193622" (E.164, as Twilio requires).
+     * Preserves an optional "whatsapp:" prefix.
+     */
+    private static String sanitizeFromNumber(String raw) {
+        if (raw == null) return "";
+        String s = raw.trim();
+        boolean hasPrefix = s.toLowerCase(Locale.ROOT).startsWith("whatsapp:");
+        if (hasPrefix) s = s.substring("whatsapp:".length());
+        s = s.replaceAll("[\\s\\-()]", "");
+        if (s.isEmpty()) return "";
+        return hasPrefix ? "whatsapp:" + s : s;
+    }
+
+    /** WhatsApp accepts audio/aac, audio/amr, audio/mpeg, audio/mp4, audio/ogg — but NOT audio/webm or wav. */
+    private static boolean isWhatsappSupportedAudio(String fileName) {
+        String lower = fileName == null ? "" : fileName.toLowerCase(Locale.ROOT);
+        return lower.endsWith(".m4a") || lower.endsWith(".mp4") || lower.endsWith(".ogg")
+                || lower.endsWith(".oga") || lower.endsWith(".mp3") || lower.endsWith(".aac")
+                || lower.endsWith(".amr");
     }
 
     /**
@@ -562,6 +794,27 @@ public class WhatsAppNotificationService {
         public String        getProvider()         { return provider; }
         public String        getProviderMessageId(){ return providerMessageId; }
         public NotificationLifecycle getLifecycle(){ return lifecycle; }
+    }
+
+    /** Result of {@link #dispatch} — drives test-send strings + recording row persistence. */
+    private static final class DispatchOutcome {
+        final boolean success;
+        final String twilioSid;
+        final String summary;
+
+        private DispatchOutcome(boolean success, String twilioSid, String summary) {
+            this.success = success;
+            this.twilioSid = twilioSid;
+            this.summary = summary;
+        }
+
+        static DispatchOutcome ok(String summary, String twilioSid) {
+            return new DispatchOutcome(true, twilioSid, summary);
+        }
+
+        static DispatchOutcome fail(String summary) {
+            return new DispatchOutcome(false, null, summary);
+        }
     }
 
     /** Small internal value-class so dispatch() can branch on Twilio result. */

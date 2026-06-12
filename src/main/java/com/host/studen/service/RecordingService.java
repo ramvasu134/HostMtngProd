@@ -2,10 +2,8 @@ package com.host.studen.service;
 
 import com.host.studen.model.Meeting;
 import com.host.studen.model.Recording;
-import com.host.studen.model.Transcript;
 import com.host.studen.model.User;
 import com.host.studen.repository.RecordingRepository;
-import com.host.studen.repository.TranscriptRepository;
 import com.host.studen.repository.UserRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -34,8 +32,6 @@ public class RecordingService {
     @Autowired
     private RecordingRepository recordingRepository;
 
-    @Autowired
-    private TranscriptRepository transcriptRepository;
 
     @Autowired
     private WhatsAppNotificationService whatsAppNotificationService;
@@ -98,9 +94,6 @@ public class RecordingService {
         recording.setStatus(Recording.RecordingStatus.READY);
 
         Recording savedRecording = recordingRepository.save(recording);
-        
-        // Save transcript (from browser speech recognition or placeholder)
-        generateTranscriptForRecording(savedRecording, recordedBy, transcriptText);
 
         triggerWhatsAppNotification(savedRecording, meeting, recordedBy);
 
@@ -119,8 +112,16 @@ public class RecordingService {
             Files.createDirectories(uploadPath);
         }
 
-        // Generate filename
-        String extension = contentType != null && contentType.contains("webm") ? ".webm" : ".wav";
+        // Generate filename — extension must reflect the actual container so
+        // WhatsApp media attachment (which checks format) works for mp4/ogg clips
+        String extension = ".wav";
+        if (contentType != null) {
+            String ct = contentType.toLowerCase();
+            if (ct.contains("webm"))                          extension = ".webm";
+            else if (ct.contains("mp4") || ct.contains("aac")) extension = ".m4a";
+            else if (ct.contains("ogg"))                       extension = ".ogg";
+            else if (ct.contains("mpeg") || ct.contains("mp3")) extension = ".mp3";
+        }
         String uniqueFileName = UUID.randomUUID().toString() + extension;
         Path filePath = uploadPath.resolve(uniqueFileName);
 
@@ -140,9 +141,6 @@ public class RecordingService {
         recording.setStatus(Recording.RecordingStatus.READY);
 
         Recording savedRecording = recordingRepository.save(recording);
-        
-        // Auto-generate transcript
-        generateTranscriptForRecording(savedRecording, recordedBy, null);
 
         triggerWhatsAppNotification(savedRecording, meeting, recordedBy);
 
@@ -178,38 +176,10 @@ public class RecordingService {
         }
     }
 
-    /**
-     * Generate transcript for a recording
-     */
-    private void generateTranscriptForRecording(Recording recording, User student, String transcriptText) {
-        try {
-            String content = (transcriptText != null && !transcriptText.trim().isEmpty())
-                    ? transcriptText.trim()
-                    : "[Audio recording - " + recording.getDurationSeconds() + " seconds]";
-            
-            Transcript transcript = new Transcript();
-            transcript.setRecording(recording);
-            transcript.setUser(student);
-            transcript.setSpeakerName(student.getDisplayName());
-            transcript.setContent(content);
-            transcript.setStartTimeSeconds(0);
-            transcript.setEndTimeSeconds((int) recording.getDurationSeconds());
-            transcript.setLanguage("en");
-            transcriptRepository.save(transcript);
-            
-            log.info("Transcript placeholder created for recording: {}", recording.getId());
-        } catch (Exception e) {
-            log.error("Error creating transcript for recording: {}", e.getMessage(), e);
-        }
-    }
 
     @Transactional
     public void deleteRecording(Long recordingId) {
         recordingRepository.findById(recordingId).ifPresent(recording -> {
-            // Delete associated transcripts first
-            List<Transcript> transcripts = transcriptRepository.findByRecordingId(recordingId);
-            transcriptRepository.deleteAll(transcripts);
-            
             // Delete file from disk
             try {
                 Path filePath = Paths.get(recording.getFilePath());

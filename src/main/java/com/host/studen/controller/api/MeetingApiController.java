@@ -4,9 +4,11 @@ import com.host.studen.model.Meeting;
 import com.host.studen.model.MeetingParticipant;
 import com.host.studen.model.Recording;
 import com.host.studen.model.User;
+import com.host.studen.repository.UserRepository;
 import com.host.studen.security.CustomUserDetails;
 import com.host.studen.service.MeetingService;
 import com.host.studen.service.RecordingService;
+import com.host.studen.service.WhatsAppNotificationService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.UrlResource;
@@ -38,6 +40,12 @@ public class MeetingApiController {
 
     @Autowired
     private SimpMessagingTemplate messagingTemplate;
+
+    @Autowired
+    private UserRepository userRepository;
+
+    @Autowired
+    private WhatsAppNotificationService whatsAppNotificationService;
 
     @GetMapping("/{meetingCode}/participants")
     public ResponseEntity<List<Map<String, Object>>> getParticipants(@PathVariable String meetingCode) {
@@ -111,6 +119,16 @@ public class MeetingApiController {
             wsPayload.put("duration", duration);
             wsPayload.put("userName", user.getDisplayName());
             wsPayload.put("timestamp", LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
+            User host = meeting.getHost();
+            if (host != null) {
+                User teacher = userRepository.findById(host.getId()).orElse(host);
+                WhatsAppNotificationService.RecordingWhatsappHint hint =
+                        whatsAppNotificationService.hintForRecordingSavedEvent(teacher);
+                if (hint != null) {
+                    wsPayload.put("whatsappSetupAlert", hint.code());
+                    wsPayload.put("whatsappSetupMessage", hint.message());
+                }
+            }
             messagingTemplate.convertAndSend("/topic/recording/" + meetingCode, wsPayload);
 
             Map<String, Object> response = new HashMap<>();

@@ -199,6 +199,8 @@ function cleanupDashboardMeeting() {
     Object.keys(_dm_voiceAnalyzers).forEach(_dm_stopVoiceAnalyzer);
     _dm_voiceAnalyzers = {};
     _dm_lastSpeechAt = {};
+    _dm_studentMicMuted = {};
+    _dm_studentSndMuted = {};
 
     _dm_stopSpeechRec(); // stop teacher's speech recognition
     _dm_pendingTranscripts = [];
@@ -234,7 +236,8 @@ function dashToggleMic() {
 function dashToggleSpeaker() {
     _dm_spkMuted = !_dm_spkMuted;
     document.querySelectorAll('audio[id^="dash-sr-"]').forEach(el => {
-        el.muted = _dm_spkMuted;
+        const pid = el.id.replace('dash-sr-', '');
+        el.muted = _dm_spkMuted || !!_dm_studentSndMuted[pid];
     });
     const btn  = document.getElementById('speakerBtn');
     const icon = btn ? btn.querySelector('i') : null;
@@ -348,7 +351,7 @@ function _dm_playAudio(peerId, stream) {
         audio.id         = 'dash-sr-' + peerId;
         audio.autoplay   = true;
         audio.playsInline = true;
-        audio.muted      = _dm_spkMuted;
+        audio.muted      = _dm_spkMuted || !!_dm_studentSndMuted[String(peerId)];
         document.body.appendChild(audio);
     }
     audio.srcObject = stream;
@@ -440,6 +443,8 @@ function _dm_onParticipant(data) {
     } else if (data.event === 'leave') {
         _dm_stopVoiceAnalyzer(String(data.userId));
         delete _dm_lastSpeechAt[String(data.userId)];
+        delete _dm_studentMicMuted[String(data.userId)];
+        delete _dm_studentSndMuted[String(data.userId)];
         _dm_removeCard(data.userId);
         _dm_updateCount();
         const pc = _dm_peers[String(data.userId)];
@@ -449,6 +454,9 @@ function _dm_onParticipant(data) {
 
     } else if (data.event === 'mic-toggle') {
         _dm_updateCardMic(data.userId, data.micEnabled);
+        // Keep the card's mic action button in sync with the student's actual state
+        _dm_studentMicMuted[String(data.userId)] = data.micEnabled === false;
+        _dm_updatePactMic(String(data.userId), data.micEnabled !== false);
     }
 }
 
@@ -511,6 +519,7 @@ function _dm_addCard(userId, userName) {
     if (placeholder) placeholder.style.display = 'none';
     // Avoid duplicates
     if (area.querySelector('[data-pid="' + userId + '"]')) return;
+    const pid      = String(userId);
     const initials = _dmInitials(userName);
     const card = document.createElement('div');
     card.className   = 'dm-pcard';
@@ -523,7 +532,90 @@ function _dm_addCard(userId, userName) {
             '<div class="dm-dot" style="background:rgba(6,182,212,0.5);"></div>' +
             '<div class="dm-dot" style="background:rgba(255,255,255,0.2);"></div>' +
         '</div>';
+
+    // Per-student action buttons: mic (remote mute), sound (mute for me), chat, exit (kick)
+    const actions = document.createElement('div');
+    actions.className = 'dm-pcard-actions';
+    const mkBtn = function (id, cls, icon, title, handler) {
+        const b = document.createElement('button');
+        b.id        = id;
+        b.className = 'dm-pact ' + cls;
+        b.title     = title;
+        b.innerHTML = '<i class="fas ' + icon + '"></i>';
+        b.addEventListener('click', function (ev) { ev.stopPropagation(); handler(); });
+        return b;
+    };
+    actions.appendChild(mkBtn('dm-pact-mic-' + pid, 'dm-pact-mic', 'fa-microphone-slash', 'Mute / unmute student',
+        function () { dashStudentMicToggle(pid); }));
+    actions.appendChild(mkBtn('dm-pact-sound-' + pid, 'dm-pact-sound', 'fa-volume-up', 'Mute student audio for me',
+        function () { dashStudentSoundToggle(pid); }));
+    actions.appendChild(mkBtn('dm-pact-chat-' + pid, 'dm-pact-chat', 'fa-comment', 'Chat with student',
+        function () { dashStudentChat(pid, userName); }));
+    actions.appendChild(mkBtn('dm-pact-exit-' + pid, 'dm-pact-exit', 'fa-sign-out-alt', 'Remove from meeting',
+        function () { dashStudentKick(pid, userName); }));
+    card.appendChild(actions);
+
     area.appendChild(card);
+}
+
+// ── Per-student card actions ─────────────────────────────────────────────────
+
+let _dm_studentMicMuted = {};   // host-enforced mic mute per student
+let _dm_studentSndMuted = {};   // local "sound off for me" per student
+
+function dashStudentMicToggle(userId) {
+    const pid      = String(userId);
+    const nowMuted = !_dm_studentMicMuted[pid];
+    _dm_studentMicMuted[pid] = nowMuted;
+    if (_dm_stomp && _dm_stomp.connected) {
+        _dm_stomp.send('/app/control/' + _dm_code, {}, JSON.stringify({
+            event: nowMuted ? 'mute' : 'unmute',
+            targetUserId: pid
+        }));
+    }
+    _dm_updatePactMic(pid, !nowMuted);
+}
+
+function _dm_updatePactMic(userId, micOn) {
+    const btn = document.getElementById('dm-pact-mic-' + userId);
+    if (!btn) return;
+    const icon = btn.querySelector('i');
+    if (icon) icon.className = 'fas ' + (micOn ? 'fa-microphone' : 'fa-microphone-slash');
+    btn.classList.toggle('off', !micOn);
+}
+
+function dashStudentSoundToggle(userId) {
+    const pid   = String(userId);
+    const muted = !_dm_studentSndMuted[pid];
+    _dm_studentSndMuted[pid] = muted;
+    const audio = document.getElementById('dash-sr-' + pid);
+    if (audio) audio.muted = muted || _dm_spkMuted;
+    const btn = document.getElementById('dm-pact-sound-' + pid);
+    if (btn) {
+        const icon = btn.querySelector('i');
+        if (icon) icon.className = 'fas ' + (muted ? 'fa-volume-mute' : 'fa-volume-up');
+        btn.classList.toggle('off', muted);
+    }
+}
+
+function dashStudentChat(userId, userName) {
+    if (typeof switchTab === 'function') switchTab('chat');
+    const input = document.getElementById('dashChatInput');
+    if (input) {
+        const tag = '@' + (userName || 'Student') + ' ';
+        if (!input.value.startsWith(tag)) input.value = tag + input.value;
+        input.focus();
+    }
+}
+
+function dashStudentKick(userId, userName) {
+    if (!confirm('Remove ' + (userName || 'this student') + ' from the meeting?')) return;
+    if (_dm_stomp && _dm_stomp.connected) {
+        _dm_stomp.send('/app/control/' + _dm_code, {}, JSON.stringify({
+            event: 'kick-student',
+            targetUserId: String(userId)
+        }));
+    }
 }
 
 function _dm_removeCard(userId) {
@@ -781,6 +873,9 @@ function _dm_onRecording(data) {
     const name = data.userName || 'A student';
     const dur  = data.duration ? ' (' + data.duration + 's)' : '';
     _dmShowToast('🎙️ New Clip', name + ' saved an audio clip' + dur, '#6366f1');
+    if (data.whatsappSetupAlert && data.whatsappSetupMessage) {
+        _dmShowToast('WhatsApp', data.whatsappSetupMessage, '#f59e0b');
+    }
 }
 
 // ── Conversation bundler helpers ──────────────────────────────────────────────

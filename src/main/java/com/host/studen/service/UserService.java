@@ -3,11 +3,9 @@ package com.host.studen.service;
 import com.host.studen.dto.RegisterRequest;
 import com.host.studen.model.Recording;
 import com.host.studen.model.Role;
-import com.host.studen.model.Transcript;
 import com.host.studen.model.User;
 import com.host.studen.repository.NotificationRepository;
 import com.host.studen.repository.RecordingRepository;
-import com.host.studen.repository.TranscriptRepository;
 import com.host.studen.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -30,8 +28,6 @@ public class UserService {
     @Autowired
     private RecordingRepository recordingRepository;
 
-    @Autowired
-    private TranscriptRepository transcriptRepository;
 
     @Autowired
     private PasswordEncoder passwordEncoder;
@@ -146,28 +142,16 @@ public class UserService {
         User user = userRepository.findById(studentId)
                 .orElseThrow(() -> new RuntimeException("Student not found"));
 
-        // 1. Delete transcripts directly linked to this user
-        List<Transcript> userTranscripts = transcriptRepository.findByUser(user);
-        if (!userTranscripts.isEmpty()) {
-            transcriptRepository.deleteAll(userTranscripts);
-        }
-
-        // 2. Delete transcripts linked to this student's recordings, then recordings
+        // 1. Delete recordings
         List<Recording> recordings = recordingRepository.findByRecordedBy(user);
-        for (Recording recording : recordings) {
-            List<Transcript> recTranscripts = transcriptRepository.findByRecording(recording);
-            if (!recTranscripts.isEmpty()) {
-                transcriptRepository.deleteAll(recTranscripts);
-            }
-        }
         if (!recordings.isEmpty()) {
             recordingRepository.deleteAll(recordings);
         }
 
-        // 3. Delete notifications
+        // 2. Delete notifications
         notificationRepository.deleteByUser(user);
 
-        // 4. Delete the user — MeetingParticipant cascades automatically via @OneToMany(cascade=ALL)
+        // 3. Delete the user — MeetingParticipant cascades automatically via @OneToMany(cascade=ALL)
         userRepository.deleteById(studentId);
     }
 

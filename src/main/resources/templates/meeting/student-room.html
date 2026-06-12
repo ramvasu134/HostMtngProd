@@ -146,13 +146,8 @@
             </button>
         </div>
 
-        <!-- Status hint text -->
-        <div class="sr-mic-hint" id="srMicHint">
-            <span id="srMicHintText">Tap anywhere or the button to speak</span>
-        </div>
-
         <!-- Speech-to-text language selector with multilingual auto-detect -->
-        <div style="text-align:center;margin-top:10px;display:flex;justify-content:center;gap:8px;align-items:center;flex-wrap:wrap;">
+        <div style="text-align:center;margin-top:10px;display:none;justify-content:center;gap:8px;align-items:center;flex-wrap:wrap;">
             <label for="sttLangSelect" style="font-size:11px;color:#8b949e;">Speech Language:</label>
             <select id="sttLangSelect" onchange="srChangeLang(this.value)"
                     style="background:#1e2430;color:#c9d1d9;border:1px solid #30363d;border-radius:8px;
@@ -201,8 +196,6 @@
         <button class="sr-control-btn" id="btnSpeaker" onclick="srToggleSpeaker()" title="Speaker">
             <i class="fas fa-volume-up"></i>
         </button>
-        <span class="sr-footer-hint">Tap screen to toggle mic</span>
-        <div style="width:48px;"></div><!-- spacer for alignment -->
     </footer>
 
     <!-- ===== CHAT DIALOG (centered overlay) ===== -->

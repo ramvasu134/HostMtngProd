@@ -27,8 +27,6 @@ public class StudentApiController {
     @Autowired
     private ScheduleService scheduleService;
 
-    @Autowired
-    private TranscriptService transcriptService;
 
     @Autowired
     private RecordingService recordingService;
@@ -149,50 +147,6 @@ public class StudentApiController {
                 item.put("startTime", s.getScheduledStartTime().toString());
                 item.put("endTime", s.getScheduledEndTime() != null ? s.getScheduledEndTime().toString() : null);
                 item.put("createdAt", s.getCreatedAt().toString());
-                return item;
-            }).collect(Collectors.toList());
-            return ResponseEntity.ok(result);
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body(Map.of("success", false, "message", e.getMessage()));
-        }
-    }
-
-    // ===== Transcript Endpoints =====
-
-    @GetMapping("/transcripts")
-    public ResponseEntity<?> getMyTranscripts(@AuthenticationPrincipal CustomUserDetails userDetails) {
-        try {
-            User student = userDetails.getUser();
-            List<Transcript> transcripts = transcriptService.findByUser(student);
-            List<Map<String, Object>> result = transcripts.stream().map(t -> {
-                Map<String, Object> item = new HashMap<>();
-                item.put("id", t.getId());
-                item.put("content", t.getContent());
-                item.put("speakerName", t.getSpeakerName());
-                item.put("recordingId", t.getRecording() != null ? t.getRecording().getId() : null);
-                item.put("startTime", t.getStartTimeSeconds());
-                item.put("endTime", t.getEndTimeSeconds());
-                item.put("createdAt", t.getCreatedAt() != null ? t.getCreatedAt().toString() : null);
-                return item;
-            }).collect(Collectors.toList());
-            return ResponseEntity.ok(result);
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body(Map.of("success", false, "message", e.getMessage()));
-        }
-    }
-
-    @GetMapping("/transcripts/recording/{recordingId}")
-    public ResponseEntity<?> getTranscriptsByRecording(@PathVariable Long recordingId,
-                                                       @AuthenticationPrincipal CustomUserDetails userDetails) {
-        try {
-            List<Transcript> transcripts = transcriptService.findByRecordingId(recordingId);
-            List<Map<String, Object>> result = transcripts.stream().map(t -> {
-                Map<String, Object> item = new HashMap<>();
-                item.put("id", t.getId());
-                item.put("content", t.getContent());
-                item.put("speakerName", t.getSpeakerName());
-                item.put("startTime", t.getStartTimeSeconds());
-                item.put("endTime", t.getEndTimeSeconds());
                 return item;
             }).collect(Collectors.toList());
             return ResponseEntity.ok(result);

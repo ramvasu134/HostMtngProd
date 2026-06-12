@@ -6,7 +6,6 @@ public enum NotificationType {
     SCHEDULE_CREATED,
     SCHEDULE_REMINDER,
     RECORDING_AVAILABLE,
-    TRANSCRIPT_READY,
     SYSTEM
 }
 

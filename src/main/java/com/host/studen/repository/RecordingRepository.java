@@ -10,6 +10,7 @@ import org.springframework.stereotype.Repository;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface RecordingRepository extends JpaRepository<Recording, Long> {
@@ -28,5 +29,7 @@ public interface RecordingRepository extends JpaRepository<Recording, Long> {
     
     // Count recordings by status
     long countByStatus(Recording.RecordingStatus status);
+
+    Optional<Recording> findByWhatsappOutboundMessageId(String whatsappOutboundMessageId);
 }
 

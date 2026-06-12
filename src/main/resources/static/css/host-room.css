@@ -606,6 +606,66 @@ body {
     color: var(--danger);
 }
 
+/* ===== Participant Micro-Level Controls ===== */
+.participant-status {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 24px;
+    margin-right: 4px;
+}
+
+.participant-controls {
+    display: flex;
+    gap: 6px;
+    opacity: 0;
+    transition: opacity 0.2s;
+    flex-shrink: 0;
+}
+
+.participant-item:hover .participant-controls {
+    opacity: 1;
+}
+
+.participant-control-btn {
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    border-radius: 8px;
+    background: rgba(99, 102, 241, 0.15);
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.2s;
+    flex-shrink: 0;
+}
+
+.participant-control-btn:hover {
+    background: rgba(99, 102, 241, 0.25);
+    color: var(--accent-light);
+}
+
+.participant-control-btn.muted {
+    background: rgba(239, 68, 68, 0.15);
+    color: var(--danger);
+}
+
+.participant-control-btn.muted:hover {
+    background: rgba(239, 68, 68, 0.25);
+}
+
+.participant-control-btn.kick-btn:hover {
+    background: rgba(239, 68, 68, 0.25);
+    color: var(--danger);
+}
+
+.participant-control-btn i {
+    font-size: 14px;
+}
+
 /* ===== Chat (inside tab) ===== */
 .chat-msg {
     margin-bottom: 14px;

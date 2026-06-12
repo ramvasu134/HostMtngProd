@@ -94,18 +94,18 @@ class StudentLoginE2ETest {
                 .andExpect(redirectedUrl("/login?error=true"));
     }
 
-    // ── 4. Successful student login → student dashboard ───────
+    // ── 4. Successful student login → student room (primary entry) ───────
 
     @Test
     @Order(4)
-    @DisplayName("Step 4 · Valid student login redirects to /student/dashboard")
+    @DisplayName("Step 4 · Valid student login redirects to /student/room")
     void login_studentSuccess() throws Exception {
         mockMvc.perform(post("/login")
                         .param("username", "priya")
                         .param("password", "stu@123")
                         .with(csrf()))
                 .andExpect(status().is3xxRedirection())
-                .andExpect(redirectedUrl("/student/dashboard"));
+                .andExpect(redirectedUrl("/student/room"));
     }
 
     // ── 5. Authenticated student can access all student pages ─

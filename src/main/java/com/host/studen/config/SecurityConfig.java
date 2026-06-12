@@ -79,6 +79,8 @@ public class SecurityConfig {
                 .requestMatchers("/api/auth/**").permitAll()
                 // Twilio status-callback webhook — public, signature-verified inside the controller
                 .requestMatchers("/api/whatsapp/twilio-callback").permitAll()
+                // Recording media for WhatsApp — public; the UUID filename in the URL is the access token
+                .requestMatchers("/api/public/recordings/**").permitAll()
                 // Role-based access
                 .requestMatchers("/admin/**").hasRole("ADMIN")
                 .requestMatchers("/host/**").hasRole("HOST")

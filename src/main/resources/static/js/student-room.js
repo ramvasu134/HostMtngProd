@@ -232,9 +232,18 @@ function _startRollingRecorder() {
         }
 
         _rollChunks = [];
-        const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-            ? 'audio/webm;codecs=opus'
-            : MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : '';
+        // Prefer WhatsApp-compatible containers (mp4/aac, ogg/opus) so the clip
+        // can be attached to the teacher's WhatsApp notification; webm is the
+        // last resort (plays in browser but WhatsApp rejects it as media).
+        const _recPreferredTypes = [
+            'audio/mp4',
+            'audio/ogg;codecs=opus',
+            'audio/webm;codecs=opus',
+            'audio/webm'
+        ];
+        const mimeType = _recPreferredTypes.find(t => {
+            try { return MediaRecorder.isTypeSupported(t); } catch (e) { return false; }
+        }) || '';
         const opts = mimeType ? { mimeType } : {};
 
         const stream = (_recDest && _recDest.stream && _recDest.stream.getTracks().length > 0)
@@ -569,6 +578,25 @@ function handleControlEvent(data) {
         }
     } else if (data.event === 'mute-all') {
         srToggleMic(true);
+    } else if (data.event === 'mute' && String(data.targetUserId) === String(USER_ID)) {
+        if (isMicOn) srToggleMic(true);
+        showSrNotifToast('Muted', 'The teacher muted your microphone', 'MEETING_STARTED');
+    } else if (data.event === 'unmute' && String(data.targetUserId) === String(USER_ID)) {
+        if (!isMicOn) srToggleMic();
+        showSrNotifToast('Unmuted', 'The teacher unmuted your microphone', 'MEETING_STARTED');
+    } else if (data.event === 'kick-student' && String(data.targetUserId) === String(USER_ID)) {
+        showSrNotifToast('Removed from meeting', 'The teacher removed you from this meeting', 'MEETING_STARTED');
+        try { sendParticipantEvent('leave'); } catch (e) {}
+        hideHostAudio();
+        _isMeetingActive      = false;
+        _isTranscribingActive = false;
+        if (_speechRecognition) { try { _speechRecognition.stop(); } catch(e) {} }
+        if (_isRecordingActive && mediaRecorder && mediaRecorder.state !== 'inactive') {
+            _redirectAfterUpload = true;
+            try { mediaRecorder.stop(); } catch(e) { window.location.href = '/student/room'; }
+        } else {
+            setTimeout(() => { window.location.href = '/student/room'; }, 1500);
+        }
     }
 }
 
@@ -723,8 +751,15 @@ function srSaveBoth(blob, durationSecs) {
 
 function uploadRecording(blob, duration, transcript) {
     return new Promise(function(resolve, reject) {
+        // Extension must match the recorded container — the server stores the
+        // file under this extension and WhatsApp media depends on it.
+        const _type = (blob.type || 'audio/webm').toLowerCase();
+        let _ext = '.webm';
+        if (_type.includes('mp4'))       _ext = '.m4a';
+        else if (_type.includes('ogg'))  _ext = '.ogg';
+        else if (_type.includes('mpeg')) _ext = '.mp3';
         const formData = new FormData();
-        formData.append('file', blob, 'audio-clip.webm');
+        formData.append('file', blob, 'audio-clip' + _ext);
         formData.append('duration', duration);
         if (transcript) formData.append('transcript', transcript);
 

@@ -9,9 +9,11 @@ import com.host.studen.model.User;
 import com.host.studen.security.CustomUserDetails;
 import com.host.studen.service.ChatService;
 import com.host.studen.service.LanguageTranslationService;
+import com.host.studen.repository.UserRepository;
 import com.host.studen.service.MeetingService;
 import com.host.studen.service.RecordingService;
 import com.host.studen.service.TranscriptService;
+import com.host.studen.service.WhatsAppNotificationService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -47,6 +49,12 @@ public class WebSocketController {
 
     @Autowired
     private LanguageTranslationService languageTranslationService;
+
+    @Autowired
+    private WhatsAppNotificationService whatsAppNotificationService;
+
+    @Autowired
+    private UserRepository userRepository;
 
     // WebRTC Signaling
     @MessageMapping("/signal/{meetingCode}")
@@ -183,6 +191,17 @@ public class WebSocketController {
             response.put("userName", user.getDisplayName());
             response.put("event", "recording_saved");
             response.put("timestamp", LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
+
+            User host = meeting.getHost();
+            if (host != null) {
+                User teacher = userRepository.findById(host.getId()).orElse(host);
+                WhatsAppNotificationService.RecordingWhatsappHint hint =
+                        whatsAppNotificationService.hintForRecordingSavedEvent(teacher);
+                if (hint != null) {
+                    response.put("whatsappSetupAlert", hint.code());
+                    response.put("whatsappSetupMessage", hint.message());
+                }
+            }
 
         } catch (Exception e) {
             log.error("Error auto-saving recording: {}", e.getMessage(), e);

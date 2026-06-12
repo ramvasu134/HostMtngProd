@@ -105,26 +105,8 @@
                             </span>
                         </div>
 
-                        <!-- Transcript -->
-                        <div th:if="${recordingTranscripts.containsKey(rec.id)}" class="transcript-section">
-                            <div class="transcript-header">
-                                <span><i class="fas fa-file-alt me-1"></i>Transcript</span>
-                                <button class="expand-btn" th:onclick="'toggleTranscript(' + ${rec.id} + ')'">
-                                    <i class="fas fa-chevron-down"></i>
-                                </button>
-                            </div>
-                            <div class="transcript-body" th:id="'transcript-' + ${rec.id}">
-                                <div th:each="transcript : ${recordingTranscripts.get(rec.id)}">
-                                    <p class="transcript-content" th:text="${transcript.content}">Transcript content...</p>
-                                    <div class="transcript-meta-info">
-                                        <span th:if="${transcript.language}"><i class="fas fa-language"></i> <span th:text="${transcript.language}">en</span></span>
-                                        <span><i class="fas fa-stopwatch"></i> <span th:text="${transcript.startTimeSeconds}">0</span>s - <span th:text="${transcript.endTimeSeconds}">0</span>s</span>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="recording-actions">
+                        <!-- Recording Actions -->
+                        <div class="recording-actions">
                         <button class="rec-action-btn play" title="Play" th:onclick="'toggleInlinePlay(\'sr-audio-' + ${rec.id} + '\', this)'">
                             <i class="fas fa-play"></i>
                         </button>

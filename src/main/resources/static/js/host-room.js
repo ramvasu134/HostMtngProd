@@ -22,7 +22,7 @@ let peerConnections = {};   // studentId -> RTCPeerConnection
 let pendingCandidates = {}; // peerId → queued ICE candidates before remoteDesc is set
 let isMicEnabled   = true;
 let isRecording    = false;
-let currentTab     = 'participants'; // 'participants' | 'chat' | 'recordings' | 'transcripts'
+let currentTab     = 'participants'; // 'participants' | 'chat' | 'recordings'
 let chatUnread     = 0;
 let recordingUnread = 0;
 let meetingStartTime = Date.now();
@@ -30,6 +30,8 @@ let hostSpeechRecognition = null;
 let hostTranscriptText = '';
 let hostInterimText = '';
 let hostTranscriptStartMs = 0;
+// ===== Speaker Tracking (for sorting) =====
+let speakersInMeeting = new Set(); // Set of userIds who have spoken
 
 // ===== Boot =====
 document.addEventListener('DOMContentLoaded', function () {
@@ -270,8 +272,15 @@ function handleParticipantEvent(data) {
         if (audio) audio.remove();
     } else if (data.event === 'mic-toggle') {
         updateParticipantMicStatus(data.userId, data.micEnabled);
-        if (data.micEnabled) showSpeakingStudent(data.userId, data.userName);
-        else                  hideSpeakingStudent(data.userId);
+        if (data.micEnabled) {
+            showSpeakingStudent(data.userId, data.userName);
+            // Track that this student has spoken
+            speakersInMeeting.add(String(data.userId));
+            // Move speaker to bottom of list
+            resortParticipantList();
+        } else {
+            hideSpeakingStudent(data.userId);
+        }
     }
 }
 
@@ -302,6 +311,9 @@ function handleRecordingEvent(data) {
         (data.userName || 'A student') + ' saved a clip (' + (data.duration || 0) + 's)',
         '#22c55e'
     );
+    if (data.whatsappSetupAlert && data.whatsappSetupMessage) {
+        showRoomToast('WhatsApp', data.whatsappSetupMessage, '#f59e0b');
+    }
 }
 
 function addRecordingToList(data) {
@@ -571,6 +583,17 @@ function addParticipantToList(userId, userName) {
         </div>
         <div class="participant-status">
             <i class="fas fa-microphone-slash status-mic muted"></i>
+        </div>
+        <div class="participant-controls">
+            <button class="participant-control-btn mute-btn" data-user-id="${userId}" title="Mute" onclick="muteParticipant(event)">
+                <i class="fas fa-microphone"></i>
+            </button>
+            <button class="participant-control-btn chat-btn" data-user-id="${userId}" title="Chat" onclick="openPrivateChat(event)">
+                <i class="fas fa-comment"></i>
+            </button>
+            <button class="participant-control-btn kick-btn" data-user-id="${userId}" title="Remove" onclick="removeStudent(event)">
+                <i class="fas fa-times-circle"></i>
+            </button>
         </div>`;
     list.appendChild(item);
 
@@ -641,6 +664,35 @@ function updateParticipantCount() {
     const tabBadge = document.getElementById('participantTabCount');
     if (headerEl) headerEl.textContent = count;
     if (tabBadge) tabBadge.textContent = count;
+}
+
+// ===== Resort Participant List (speakers go to bottom) =====
+function resortParticipantList() {
+    const list = document.getElementById('participantsList');
+    if (!list) return;
+
+    // Collect all participant items
+    const items = Array.from(document.querySelectorAll('#participantsList .participant-item'));
+
+    // Separate host, non-speakers, and speakers
+    const hostItem = items.find(item => item.classList.contains('host'));
+    const studentItems = items.filter(item => !item.classList.contains('host'));
+
+    // Sort students: non-speakers first, then speakers at bottom
+    studentItems.sort((a, b) => {
+        const uidA = String(a.dataset.userId);
+        const uidB = String(b.dataset.userId);
+        const aSpoke = speakersInMeeting.has(uidA) ? 1 : 0;
+        const bSpoke = speakersInMeeting.has(uidB) ? 1 : 0;
+        return aSpoke - bSpoke;  // Non-speakers (0) come first, speakers (1) go last
+    });
+
+    // Clear the list
+    list.innerHTML = '';
+
+    // Re-add in order: host, then sorted students
+    if (hostItem) list.appendChild(hostItem);
+    studentItems.forEach(item => list.appendChild(item));
 }
 
 function showSpeakingStudent(userId, userName) {
@@ -915,6 +967,51 @@ function stopHostTranscriptionAndSend() {
             endTime: durationSecs
         }));
     }, 400);
+}
+
+// ===== Participant Micro-Level Controls =====
+function muteParticipant(event) {
+    event.stopPropagation();
+    const btn = event.currentTarget;
+    const userId = btn.dataset.userId;
+    const isMuted = btn.classList.contains('muted');
+
+    if (stompClient && stompClient.connected) {
+        // Send control command to mute/unmute participant
+        stompClient.send('/app/control/' + MEETING_CODE, {}, JSON.stringify({
+            event: isMuted ? 'unmute' : 'mute',
+            targetUserId: userId
+        }));
+    }
+
+    // Update UI
+    btn.classList.toggle('muted', !isMuted);
+    btn.innerHTML = isMuted ? '<i class="fas fa-microphone"></i>' : '<i class="fas fa-microphone-slash"></i>';
+}
+
+function openPrivateChat(event) {
+    event.stopPropagation();
+    // Future: Open private chat with this participant
+    const userId = event.currentTarget.dataset.userId;
+    showRoomToast('Private Chat', 'Chat feature coming soon for user #' + userId, '#3b82f6');
+}
+
+function removeStudent(event) {
+    event.stopPropagation();
+    const userId = event.currentTarget.dataset.userId;
+    const item = document.querySelector(`.participant-item[data-user-id="${userId}"]`);
+    if (!item) return;
+    const studentName = item.querySelector('.participant-name')?.textContent || 'Student';
+
+    if (confirm('Remove ' + studentName + ' from the meeting?')) {
+        if (stompClient && stompClient.connected) {
+            stompClient.send('/app/control/' + MEETING_CODE, {}, JSON.stringify({
+                event: 'kick-student',
+                targetUserId: userId
+            }));
+        }
+        removeParticipantFromList(userId);
+    }
 }
 
 // ===== Keyboard shortcuts =====

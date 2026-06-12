@@ -57,7 +57,28 @@ services:
       - key: SPRING_PROFILES_ACTIVE
         value: prod
 
+      # Public URL of this app. OPTIONAL on Render — the app auto-derives it
+      # from RENDER_EXTERNAL_URL. Set this only when serving from a custom
+      # domain (e.g. https://mtng.yourdomain.com). Used for WhatsApp recording
+      # links, Twilio audio-clip media URLs, and the Twilio status callback.
       - key: APP_PUBLIC_URL
+        sync: false
+
+      # ── Twilio WhatsApp (audio clips to teachers) ──────────────────────────
+      # REQUIRED for WhatsApp notifications. Set these once in the Render
+      # dashboard (Environment → Add Environment Variable):
+      #   TWILIO_ACCOUNT_SID   → ACxxxxxxxx... (Twilio Console home page)
+      #   TWILIO_AUTH_TOKEN    → auth token (same page)
+      #   TWILIO_WHATSAPP_FROM → whatsapp:+14155238886 (sandbox) or your
+      #                          approved WhatsApp Business sender number
+      # Sandbox note: each receiving phone must first send "join <code>" to
+      # +1 415 523 8886 on WhatsApp (code shown in Twilio Console → Messaging
+      # → Try it out). For unrestricted delivery, register a WhatsApp sender.
+      - key: TWILIO_ACCOUNT_SID
+        sync: false
+      - key: TWILIO_AUTH_TOKEN
+        sync: false
+      - key: TWILIO_WHATSAPP_FROM
         sync: false
 
       # ── Database (injected from the Render PostgreSQL above) ─────────────

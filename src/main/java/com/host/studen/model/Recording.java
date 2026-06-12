@@ -35,6 +35,20 @@ public class Recording {
     @Column(updatable = false)
     private LocalDateTime createdAt;
 
+    /** Twilio MessageSid when sent via Twilio; used for delivery webhooks. */
+    @Column(name = "whatsapp_outbound_message_id", length = 64)
+    private String whatsappOutboundMessageId;
+
+    /** QUEUED, SENT, DELIVERED, READ, FAILED — populated after recording notify attempts. */
+    @Column(name = "whatsapp_outbound_status", length = 32)
+    private String whatsappOutboundStatus;
+
+    @Column(name = "whatsapp_outbound_detail", length = 512)
+    private String whatsappOutboundDetail;
+
+    @Column(name = "whatsapp_outbound_updated_at")
+    private LocalDateTime whatsappOutboundUpdatedAt;
+
     @PrePersist
     protected void onCreate() {
         createdAt = LocalDateTime.now();
@@ -84,5 +98,25 @@ public class Recording {
 
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
+
+    public String getWhatsappOutboundMessageId() { return whatsappOutboundMessageId; }
+    public void setWhatsappOutboundMessageId(String whatsappOutboundMessageId) {
+        this.whatsappOutboundMessageId = whatsappOutboundMessageId;
+    }
+
+    public String getWhatsappOutboundStatus() { return whatsappOutboundStatus; }
+    public void setWhatsappOutboundStatus(String whatsappOutboundStatus) {
+        this.whatsappOutboundStatus = whatsappOutboundStatus;
+    }
+
+    public String getWhatsappOutboundDetail() { return whatsappOutboundDetail; }
+    public void setWhatsappOutboundDetail(String whatsappOutboundDetail) {
+        this.whatsappOutboundDetail = whatsappOutboundDetail;
+    }
+
+    public LocalDateTime getWhatsappOutboundUpdatedAt() { return whatsappOutboundUpdatedAt; }
+    public void setWhatsappOutboundUpdatedAt(LocalDateTime whatsappOutboundUpdatedAt) {
+        this.whatsappOutboundUpdatedAt = whatsappOutboundUpdatedAt;
+    }
 }
 

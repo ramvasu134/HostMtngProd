@@ -98,16 +98,6 @@ public class NotificationService {
         return saved;
     }
 
-    @Transactional
-    public Notification createTranscriptNotification(User user, String title, String message, String transcriptId) {
-        Notification notification = new Notification(user, title, message, NotificationType.TRANSCRIPT_READY);
-        notification.setRelatedEntityId(transcriptId);
-        
-        Notification saved = notificationRepository.save(notification);
-        sendRealTimeNotification(user, saved);
-        
-        return saved;
-    }
 
     @Transactional
     public void markAsRead(Long notificationId) {
