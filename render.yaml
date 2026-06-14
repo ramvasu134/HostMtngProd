@@ -81,31 +81,19 @@ services:
       - key: TWILIO_WHATSAPP_FROM
         sync: false
 
-      # ── Database (injected from the Render PostgreSQL above) ─────────────
+      # ── Database ──────────────────────────────────────────────────────────
+      # Internal hostname (only reachable from Render services in same region)
       - key: DB_HOST
-        fromDatabase:
-          name: meeting-db
-          property: host
-
+        value: dpg-d7hlidn7f7vs738lnim0-a
       - key: DB_PORT
-        fromDatabase:
-          name: meeting-db
-          property: port
-
+        value: "5432"
       - key: DB_NAME
-        fromDatabase:
-          name: meeting-db
-          property: database
-
+        value: meeting_db_sr7r
       - key: DB_USER
-        fromDatabase:
-          name: meeting-db
-          property: user
-
+        value: meeting_user
+      # DB_PASSWORD must be set manually in the Render dashboard (not committed)
       - key: DB_PASSWORD
-        fromDatabase:
-          name: meeting-db
-          property: password
+        sync: false
 
       # ── Database Pool Size ─────────────────────────────────────────────────
       - key: DB_POOL_SIZE
@@ -144,9 +132,9 @@ services:
       - key: APP_WEBSOCKET_ALLOWED_ORIGINS
         value: "https://*.onrender.com,https://your-domain.com"
 
-      # ── JVM tuning (starter plan = 512MB-1GB RAM) ──────────────────────────
+      # ── JVM tuning (starter plan = 512 MB RAM — SerialGC fastest cold start) ─
       - key: JAVA_OPTS
-        value: "-server -XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0 -XX:+UseG1GC -Xlog:gc*:stdout:time"
+        value: "-server -XX:+UseContainerSupport -XX:MaxRAMPercentage=70.0 -XX:InitialRAMPercentage=25.0 -XX:+UseSerialGC -XX:TieredStopAtLevel=1 -Djava.security.egd=file:/dev/./urandom -Dspring.jmx.enabled=false"
 
       # ── Disk paths (ephemeral - consider S3 for production) ────────────────
       - key: APP_UPLOAD_DIR
