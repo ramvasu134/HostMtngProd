@@ -4,7 +4,6 @@ import jakarta.validation.constraints.NotBlank;
 
 public class RegisterRequest {
 
-    @NotBlank(message = "Teacher name is required")
     private String teacherName;
 
     @NotBlank(message = "Username is required")

@@ -35,21 +35,24 @@ USER appuser
 # Cloud-friendly defaults
 ENV PORT=8080
 ENV SPRING_PROFILES_ACTIVE=prod
-# Tuned for Render free tier (512 MB RAM):
-#   - SerialGC uses least memory overhead for single-core containers
-#   - MaxRAMPercentage lets JVM self-tune if memory limit changes
+# Tuned for Render starter plan (512 MB – 1 GB RAM):
+#   - SerialGC = lowest memory overhead, best for single-core containers
+#   - TieredStopAtLevel=1 = interpreter-only, fastest cold start
+#   - spring.backgroundpreinitializer.ignore = skip async pre-init
 ENV JAVA_OPTS="-server \
   -XX:+UseContainerSupport \
   -XX:MaxRAMPercentage=70.0 \
-  -XX:InitialRAMPercentage=30.0 \
+  -XX:InitialRAMPercentage=25.0 \
   -XX:+UseSerialGC \
+  -XX:TieredStopAtLevel=1 \
   -Djava.security.egd=file:/dev/./urandom \
-  -Dspring.backgroundpreinitializer.ignore=true"
+  -Dspring.backgroundpreinitializer.ignore=true \
+  -Dspring.jmx.enabled=false"
 
 EXPOSE ${PORT}
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+# Health check — start-period=120s gives Spring Boot enough time to start cold
+HEALTHCHECK --interval=30s --timeout=15s --start-period=120s --retries=3 \
   CMD wget -q --spider http://localhost:${PORT}/actuator/health || exit 1
 
 ENTRYPOINT ["sh", "-c", "java ${JAVA_OPTS} -Dserver.port=${PORT} -jar app.jar"]
