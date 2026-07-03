@@ -35,8 +35,11 @@ let _dm_transcriptSeq = 0;
 let _dm_liveTranscriptByCard = {};
 let _dm_voiceAnalyzers = {};
 let _dm_lastSpeechAt = {};
-let _dm_daisTimer = null;
-let _dm_daisCurrentPid = '';
+// Dais (speaking spotlight) state — keyed per speaker so that two students
+// speaking at the same time each get their own card + independent silence
+// timer (edge case: concurrent speakers). Key is the participant id when
+// known, otherwise a name-derived fallback key for unmatched speaker events.
+let _dm_daisSpeakers = {};   // key → { timer, pid }
 
 // ── Conversation Bundler state ────────────────────────────────────────────────
 const _dm_convMap = {};           // studentKey → conv object
@@ -621,6 +624,20 @@ function dashStudentKick(userId, userName) {
 function _dm_removeCard(userId) {
     const card = document.querySelector('[data-pid="' + userId + '"]');
     if (card) card.remove();
+
+    // If this student was on the Dais when they left, clear their speaking
+    // card/timer too (there's no card left to requeue).
+    const pid = String(userId);
+    const key = Object.keys(_dm_daisSpeakers).find(k => _dm_daisSpeakers[k].pid === pid);
+    if (key) {
+        clearTimeout(_dm_daisSpeakers[key].timer);
+        delete _dm_daisSpeakers[key];
+        const stage = document.getElementById('dashDaisStage');
+        const daisCard = stage ? stage.querySelector('.dm-dais-card[data-dais-key="' + key.replace(/"/g, '') + '"]') : null;
+        if (daisCard) daisCard.remove();
+        _dm_daisRestoreEmptyIfIdle(stage, document.getElementById('dashDaisEmpty'), document.getElementById('dashDaisWave'));
+    }
+
     const area = document.getElementById('participantsCards') || document.getElementById('participantsContent');
     if (!area) return;
     const remaining = area.querySelectorAll('[data-pid]');
@@ -648,22 +665,27 @@ function _dm_flashSpeakAlert(userId, userName) {
 
     const pid   = String(userId || '');
     const label = (userName || _dm_getParticipantName(pid) || 'Student').trim();
+    // When the participant id isn't known (e.g. a speaker event matched only
+    // by name), fall back to a name-derived key so distinct unmatched
+    // speakers still get their own card instead of clobbering each other.
+    const key = pid || ('name:' + label.toLowerCase());
 
-    // Reset the auto-hide timer on every new speech event
-    if (_dm_daisTimer) {
-        clearTimeout(_dm_daisTimer);
-        _dm_daisTimer = null;
-    }
-
-    // Activate the wave equaliser in the header
+    if (empty) empty.style.display = 'none';
     if (wave) wave.classList.add('active');
 
-    // Reuse or create the Dais card
-    let card = stage.querySelector('.dm-dais-card');
+    // Reset only THIS speaker's own silence timer — other students who are
+    // simultaneously speaking keep their independent cards + timers running.
+    const existing = _dm_daisSpeakers[key];
+    if (existing && existing.timer) clearTimeout(existing.timer);
+
+    // Reuse or create this speaker's own Dais card (multiple cards can
+    // coexist side by side when two+ students speak at the same time).
+    let card = stage.querySelector('.dm-dais-card[data-dais-key="' + key.replace(/"/g, '') + '"]');
     if (!card) {
-        if (empty) empty.style.display = 'none';
         card = document.createElement('div');
         card.className = 'dm-dais-card';
+        card.dataset.daisKey = key;
+        if (pid) card.dataset.daisPid = pid;
         card.innerHTML =
             '<div class="dm-dais-avatar">' + _dmEsc(_dmInitials(label)) + '</div>' +
             '<div class="dm-dais-name">' + _dmEsc(label) + '</div>' +
@@ -678,36 +700,58 @@ function _dm_flashSpeakAlert(userId, userName) {
                 '<div class="dm-dais-bar"></div>' +
                 '<div class="dm-dais-bar"></div>' +
             '</div>';
-        if (pid) card.dataset.daisPid = pid;
         stage.appendChild(card);
-    } else if (_dm_daisCurrentPid !== pid) {
-        // Different student stepped onto the Dais — update content
-        const avatarEl = card.querySelector('.dm-dais-avatar');
-        const nameEl   = card.querySelector('.dm-dais-name');
-        if (avatarEl) avatarEl.textContent = _dmInitials(label);
-        if (nameEl)   nameEl.textContent   = label;
-        if (pid) card.dataset.daisPid = pid;
-        // Re-trigger entrance animation
-        card.style.animation = 'none';
-        void card.offsetHeight;
-        card.style.animation = '';
     }
-    _dm_daisCurrentPid = pid;
 
-    // After 3.5 s of silence, fade the card out and restore empty state
-    _dm_daisTimer = setTimeout(() => {
-        const c = stage.querySelector('.dm-dais-card');
-        if (c) {
-            c.style.transition = 'opacity 0.4s ease, transform 0.4s ease';
-            c.style.opacity    = '0';
-            c.style.transform  = 'scale(0.85) translateY(8px)';
-            setTimeout(() => { if (c.parentElement) c.remove(); }, 420);
-        }
-        setTimeout(() => { if (empty) empty.style.display = ''; }, 420);
-        if (wave) wave.classList.remove('active');
-        _dm_daisCurrentPid = '';
-        _dm_daisTimer = null;
+    // After 3.5 s of silence from THIS student only, remove their card and
+    // rotate them to the back of the participants queue (first-spoken,
+    // last-in-line) so the next student is easy to spot/call on.
+    const timer = setTimeout(() => {
+        _dm_removeDaisCard(key, pid);
     }, 3500);
+    _dm_daisSpeakers[key] = { timer, pid };
+}
+
+function _dm_removeDaisCard(key, pid) {
+    const stage = document.getElementById('dashDaisStage');
+    const empty = document.getElementById('dashDaisEmpty');
+    const wave  = document.getElementById('dashDaisWave');
+    delete _dm_daisSpeakers[key];
+
+    const c = stage ? stage.querySelector('.dm-dais-card[data-dais-key="' + key.replace(/"/g, '') + '"]') : null;
+    if (c) {
+        c.style.transition = 'opacity 0.4s ease, transform 0.4s ease';
+        c.style.opacity    = '0';
+        c.style.transform  = 'scale(0.85) translateY(8px)';
+        setTimeout(() => { if (c.parentElement) c.remove(); _dm_daisRestoreEmptyIfIdle(stage, empty, wave); }, 420);
+    } else {
+        _dm_daisRestoreEmptyIfIdle(stage, empty, wave);
+    }
+
+    // Only known participants (real pid) can be repositioned in the queue.
+    if (pid) _dm_moveParticipantToQueueEnd(pid);
+}
+
+function _dm_daisRestoreEmptyIfIdle(stage, empty, wave) {
+    // Only show the empty placeholder / stop the wave once nobody else is
+    // still speaking (handles the concurrent-speakers edge case correctly).
+    if (stage && stage.querySelectorAll('.dm-dais-card').length > 0) return;
+    if (empty) empty.style.display = '';
+    if (wave) wave.classList.remove('active');
+}
+
+// Rotates a participant to the back of the participants list once they
+// finish speaking — a simple, fair "spoke → back of the line" queue so the
+// teacher can see at a glance who hasn't had a turn recently.
+function _dm_moveParticipantToQueueEnd(pid) {
+    const area = document.getElementById('participantsCards') || document.getElementById('participantsContent');
+    if (!area) return;
+    const card = area.querySelector('[data-pid="' + pid + '"]');
+    if (!card) return;
+    if (area.lastElementChild === card) return; // already at the back
+    card.classList.add('dm-requeue');
+    area.appendChild(card); // re-appending an existing node relocates it — no clone/recreate
+    setTimeout(() => card.classList.remove('dm-requeue'), 600);
 }
 
 function _dm_flashSpeakBlipBySpeaker(data) {
@@ -790,9 +834,9 @@ function _dm_clearParticipants() {
     const cnt = document.getElementById('meetingOnline');
     if (cnt) cnt.textContent = '0';
 
-    // Clear Dais
-    if (_dm_daisTimer) { clearTimeout(_dm_daisTimer); _dm_daisTimer = null; }
-    _dm_daisCurrentPid = '';
+    // Clear Dais (all concurrent speakers)
+    Object.values(_dm_daisSpeakers).forEach(entry => { if (entry.timer) clearTimeout(entry.timer); });
+    _dm_daisSpeakers = {};
     const stage = document.getElementById('dashDaisStage');
     if (stage) stage.querySelectorAll('.dm-dais-card').forEach(el => el.remove());
     const daisEmpty = document.getElementById('dashDaisEmpty');

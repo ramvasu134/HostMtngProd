@@ -5401,6 +5401,8 @@ _Please login using the above credentials._`;
             display: flex;
             align-items: center;
             justify-content: center;
+            flex-wrap: wrap;
+            gap: 14px;
             padding: 10px 14px 14px;
             min-height: 130px;
         }
@@ -5572,6 +5574,17 @@ _Please login using the above credentials._`;
             cursor: default;
             transition: transform 0.2s ease, box-shadow 0.2s ease;
             flex-shrink: 0;
+        }
+
+        /* Brief highlight when a student is rotated to the back of the
+           queue after finishing their turn on the Dais. */
+        .dm-pcard.dm-requeue {
+            animation: dmRequeueFlash 0.6s ease;
+        }
+
+        @keyframes dmRequeueFlash {
+            0%   { box-shadow: 0 0 0 3px rgba(245,158,11,0.55); }
+            100% { box-shadow: 0 0 0 0 rgba(245,158,11,0); }
         }
 
         .dm-pcard:hover {
