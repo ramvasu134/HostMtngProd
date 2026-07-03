@@ -60,6 +60,11 @@ public class WhatsAppNotificationService {
     private static final Logger log = LoggerFactory.getLogger(WhatsAppNotificationService.class);
     private static final int MAX_STATUS_PER_TEACHER = 10;
 
+    /** Twilio's shared WhatsApp Sandbox "from" number — every account gets the same one. */
+    private static final String SANDBOX_FROM_NUMBER = "whatsapp:+14155238886";
+    /** Twilio error code raised when a Sandbox message targets a number that hasn't joined. */
+    private static final String TWILIO_ERROR_SANDBOX_NOT_JOINED = "63015";
+
     // ── Twilio config ────────────────────────────────────────────────────────
     @Value("${app.twilio.account-sid:}")        private String accountSid;
     @Value("${app.twilio.auth-token:}")         private String authToken;
@@ -113,6 +118,13 @@ public class WhatsAppNotificationService {
                 log.info("WhatsApp: Twilio backend READY (from={}, status-callback={})",
                         fromNumber,
                         isBlank(configuredCallbackUrl) ? "(none — set app.twilio.status-callback-url)" : configuredCallbackUrl);
+                if (SANDBOX_FROM_NUMBER.equals(fromNumber)) {
+                    log.warn("WhatsApp: Twilio 'from' number is the shared SANDBOX number ({}). " +
+                            "Every recipient must first WhatsApp \"join <your-sandbox-code>\" to this number " +
+                            "(Twilio Console -> Messaging -> Try it out -> Send a WhatsApp message) or messages " +
+                            "will fail with error 63015. Buy/register a WhatsApp sender for production use.",
+                            SANDBOX_FROM_NUMBER);
+                }
             } catch (Exception e) {
                 log.error("WhatsApp: Twilio init failed: {}", e.getMessage());
             }
@@ -316,6 +328,12 @@ public class WhatsAppNotificationService {
     private String buildTwilioCallbackRowDetail(NotificationLifecycle newState, String messageState,
                                                 String errorCode, String errorMessage) {
         if (newState == NotificationLifecycle.FAILED || newState == NotificationLifecycle.UNDELIVERED) {
+            if (TWILIO_ERROR_SANDBOX_NOT_JOINED.equals(errorCode)) {
+                return "Recipient hasn't joined the Twilio Sandbox. Ask them to WhatsApp \"join <your-code>\" to " +
+                        fromNumber.replace("whatsapp:", "") +
+                        " (code is in Twilio Console -> Messaging -> Try it out -> Send a WhatsApp message). [" +
+                        errorCode + "]";
+            }
             if (!isBlank(errorMessage)) {
                 return errorMessage + (isBlank(errorCode) ? "" : " [" + errorCode + "]");
             }
