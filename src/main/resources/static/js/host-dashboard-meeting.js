@@ -205,6 +205,12 @@ function cleanupDashboardMeeting() {
     _dm_studentMicMuted = {};
     _dm_studentSndMuted = {};
 
+    // Remove any leftover student audio elements + the audio-unlock prompt
+    document.querySelectorAll('audio[id^="dash-sr-"]').forEach(el => el.remove());
+    const unlockBar = document.getElementById('dmAudioUnlockBar');
+    if (unlockBar) unlockBar.remove();
+    _dm_audioUnlockShown = false;
+
     _dm_stopSpeechRec(); // stop teacher's speech recognition
     _dm_pendingTranscripts = [];
 
@@ -359,7 +365,50 @@ function _dm_playAudio(peerId, stream) {
     }
     audio.srcObject = stream;
     _dm_startVoiceAnalyzer(peerId, stream);
+
+    // The `autoplay` attribute alone is not enough — some browsers silently
+    // block unmuted autoplay for audio elements created outside a direct
+    // click handler, with NO error and NO visual cue. Explicitly call play()
+    // and surface a one-click fix if it's blocked, otherwise the teacher can
+    // end up never hearing any student with no indication why.
+    const playPromise = audio.play();
+    if (playPromise !== undefined) {
+        playPromise.catch(() => _dm_showAudioUnlockPrompt());
+    }
 }
+
+let _dm_audioUnlockShown = false;
+
+function _dm_showAudioUnlockPrompt() {
+    if (_dm_audioUnlockShown || document.getElementById('dmAudioUnlockBar')) return;
+    _dm_audioUnlockShown = true;
+    const bar = document.createElement('div');
+    bar.id = 'dmAudioUnlockBar';
+    bar.style.cssText =
+        'position:fixed;top:70px;left:50%;transform:translateX(-50%);' +
+        'background:#f59e0b;color:#111827;padding:10px 18px;border-radius:10px;' +
+        'z-index:9999;font-size:13px;font-weight:600;box-shadow:0 4px 16px rgba(0,0,0,0.35);' +
+        'display:flex;align-items:center;gap:10px;cursor:pointer;';
+    bar.innerHTML = '<i class="fas fa-volume-mute"></i> Student audio is blocked by your browser — click to enable';
+    bar.onclick = _dm_unlockAllStudentAudio;
+    document.body.appendChild(bar);
+}
+
+function _dm_unlockAllStudentAudio() {
+    document.querySelectorAll('audio[id^="dash-sr-"]').forEach(el => {
+        el.play().catch(() => {});
+    });
+    const bar = document.getElementById('dmAudioUnlockBar');
+    if (bar) bar.remove();
+    _dm_audioUnlockShown = false;
+}
+
+// Browsers unblock audio after ANY user gesture on the page, so retry
+// silently on the very next click too (covers teachers who click a button
+// elsewhere instead of the banner itself).
+document.addEventListener('click', function () {
+    if (_dm_audioUnlockShown) _dm_unlockAllStudentAudio();
+});
 
 function _dm_onSignal(data) {
     const sid = String(data.senderId);
