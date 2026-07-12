@@ -222,7 +222,7 @@ public class WhatsAppNotificationService {
             // From here on, we DO log to the status box because the teacher
             // explicitly opted in and a real send is being attempted.
             String recordingUrl = buildRecordingUrl(recording);
-            String body = buildRecordingMessage(student, recordingUrl);
+            String body = buildRecordingMessage(student, recording, recordingUrl);
             String mediaUrl = buildRecordingMediaUrl(recording);
             DispatchOutcome outcome = dispatch(teacher, to, body, mediaUrl, recording, student);
             persistRecordingWhatsappOutbound(recording, outcome);
@@ -633,6 +633,39 @@ public class WhatsAppNotificationService {
     }
 
     /**
+     * Teacher-triggered "de-link my WhatsApp" action — proxies to the
+     * standalone whatsapp-baileys-service's /unlink endpoint, which logs the
+     * currently-linked phone out and immediately issues a fresh QR code.
+     * TEACHER-ONLY: only reachable via the {@code @PreAuthorize("hasRole('HOST')")}
+     * dashboard endpoint.
+     */
+    public BaileysStatusDto unlinkBaileys() {
+        if (!baileysEnabled || isBlank(baileysUrl)) {
+            return new BaileysStatusDto(false, baileysEnabled, null, null, null, "Baileys is not configured.");
+        }
+        try {
+            HttpRequest.Builder builder = HttpRequest.newBuilder()
+                    .uri(URI.create(baileysUrl.replaceAll("/+$", "") + "/unlink"))
+                    .timeout(Duration.ofSeconds(15))
+                    .POST(HttpRequest.BodyPublishers.noBody());
+            if (!isBlank(baileysToken)) {
+                builder.header("x-notification-token", baileysToken);
+            }
+            HttpResponse<String> res = httpClient.send(builder.build(), HttpResponse.BodyHandlers.ofString());
+            if (res.statusCode() < 200 || res.statusCode() >= 300) {
+                return new BaileysStatusDto(true, true, "unreachable", null, null,
+                        "HTTP " + res.statusCode() + ": " + res.body());
+            }
+            log.info("Baileys unlink requested — session cleared, new QR pending.");
+            // Give the service a brief moment to restart before the dashboard polls status again.
+            return new BaileysStatusDto(true, true, "starting", null, null, null);
+        } catch (Exception e) {
+            log.warn("Baileys unlink failed: {}", e.getMessage());
+            return new BaileysStatusDto(true, true, "unreachable", null, null, e.getMessage());
+        }
+    }
+
+    /**
      * Teacher-facing snapshot of the optional Baileys provider.
      * @param configured   true when {@code app.whatsapp.baileys.enabled=true} AND a URL is set
      * @param enabled      raw value of the master switch (may be true even if url is blank)
@@ -804,8 +837,24 @@ public class WhatsAppNotificationService {
      * <p>The student name is intentionally NOT in the body — keeping the
      * message terse so WhatsApp's URL preview is the visual focal point.
      */
-    private String buildRecordingMessage(User student, String recordingUrl) {
-        return "New recording from VK Meeting: " + recordingUrl;
+    private static final DateTimeFormatter RECORDING_MESSAGE_TIMESTAMP_FMT =
+            DateTimeFormatter.ofPattern("dd-MMM-yyyy hh:mm a");
+
+    /**
+     * Student name + timestamp up front (before the link) so the message is
+     * easy to find later with WhatsApp's own chat search — searching the
+     * student's name turns up every recording sent for them, in order.
+     */
+    private String buildRecordingMessage(User student, Recording recording, String recordingUrl) {
+        String studentName = safeName(student);
+        LocalDateTime createdAt = recording != null ? recording.getCreatedAt() : null;
+        String timestamp = createdAt != null ? createdAt.format(RECORDING_MESSAGE_TIMESTAMP_FMT) : "";
+        StringBuilder sb = new StringBuilder("New recording — ").append(studentName);
+        if (!timestamp.isEmpty()) {
+            sb.append(" — ").append(timestamp);
+        }
+        sb.append("\n").append(recordingUrl);
+        return sb.toString();
     }
 
     private String safeName(User u) {

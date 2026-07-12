@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import express from 'express';
 import axios from 'axios';
-import { startBaileys, getStatus, getQrDataUrl, sendAudioMessage } from './baileysClient.js';
+import { startBaileys, getStatus, getQrDataUrl, sendAudioMessage, unlinkSession } from './baileysClient.js';
 import { convertToOggOpus } from './audioConvert.js';
 
 const app = express();
@@ -66,6 +66,30 @@ app.get('/qr', (req, res) => {
             <script>setTimeout(function () { window.location.reload(); }, 5000);</script>
         </body></html>
     `);
+});
+
+/**
+ * POST /unlink — teacher-triggered "de-link my WhatsApp" action.
+ * Header: x-notification-token: <shared secret, matches NOTIFICATION_INTERNAL_TOKEN>
+ *
+ * Logs the currently-linked phone out (removes it from that phone's
+ * WhatsApp → Linked Devices list, same as unlinking from the phone itself),
+ * clears the stored session, and restarts so a brand new QR code is ready
+ * immediately for the next teacher who wants to link their own number.
+ */
+app.post('/unlink', async (req, res) => {
+    const requestToken = req.header('x-notification-token');
+    const expectedToken = process.env.NOTIFICATION_INTERNAL_TOKEN;
+    if (expectedToken && requestToken !== expectedToken) {
+        return res.status(401).json({ success: false, message: 'Unauthorized.' });
+    }
+    try {
+        await unlinkSession();
+        return res.status(200).json({ success: true, message: 'Unlinked. A new QR code is ready to scan.' });
+    } catch (err) {
+        console.error('[whatsapp-baileys-service] /unlink failed:', err.message);
+        return res.status(500).json({ success: false, message: err.message });
+    }
 });
 
 /**

@@ -564,5 +564,27 @@ public class HostApiController {
             return ResponseEntity.badRequest().body(Map.of("configured", false, "message", e.getMessage()));
         }
     }
+
+    /**
+     * Teacher-triggered "de-link my WhatsApp" action for the free Baileys
+     * provider — logs the currently-linked phone out and issues a fresh QR.
+     * TEACHER-ONLY (dashboard button); students have no path to this endpoint.
+     */
+    @PostMapping("/whatsapp-settings/baileys-unlink")
+    @PreAuthorize("hasRole('HOST')")
+    public ResponseEntity<?> unlinkBaileys() {
+        try {
+            WhatsAppNotificationService.BaileysStatusDto status = whatsAppNotificationService.unlinkBaileys();
+            Map<String, Object> resp = new HashMap<>();
+            resp.put("success", status.error() == null);
+            resp.put("connectionState", status.connectionState());
+            if (status.error() != null) {
+                resp.put("message", status.error());
+            }
+            return ResponseEntity.ok(resp);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("success", false, "message", e.getMessage()));
+        }
+    }
 }
 

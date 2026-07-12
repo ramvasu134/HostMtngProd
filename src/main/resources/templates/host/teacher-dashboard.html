@@ -2920,6 +2920,11 @@
                             style="padding:6px 12px;font-size:12px;">
                         <i class="fas fa-qrcode"></i> Show QR to Link My WhatsApp
                     </button>
+                    <button class="btn-secondary" id="waBaileysUnlinkBtn" onclick="unlinkBaileysWhatsApp()"
+                            style="display:none; padding:6px 12px;font-size:12px; margin-left:8px;
+                                   background:rgba(239,68,68,0.15); border-color:rgba(239,68,68,0.35); color:#fca5a5;">
+                        <i class="fas fa-unlink"></i> De-link This Number
+                    </button>
                 </div>
 
                 <div style="background:rgba(99,102,241,0.08); border:1px solid rgba(99,102,241,0.30);
@@ -3437,6 +3442,7 @@
             const pill = document.getElementById('waBaileysStatusPill');
             const qrArea = document.getElementById('waBaileysQrArea');
             const qrImg = document.getElementById('waBaileysQrImg');
+            const unlinkBtn = document.getElementById('waBaileysUnlinkBtn');
             if (!section || !pill) return;
             try {
                 const r = await fetch('/api/host/whatsapp-settings/baileys-status', { credentials: 'same-origin' });
@@ -3453,6 +3459,7 @@
                     pill.style.background = 'rgba(34,197,94,0.20)';
                     pill.style.color = '#86efac';
                     if (qrArea) qrArea.style.display = 'none';
+                    if (unlinkBtn) unlinkBtn.style.display = 'inline-block';
                     stopBaileysQrPolling();
                 } else if (data.qrDataUrl) {
                     pill.textContent = 'Scan required';
@@ -3460,13 +3467,43 @@
                     pill.style.color = '#fde047';
                     if (qrImg) qrImg.src = data.qrDataUrl;
                     if (qrArea) qrArea.style.display = 'block';
+                    if (unlinkBtn) unlinkBtn.style.display = 'none';
                 } else {
                     pill.textContent = data.connectionState || 'starting…';
                     pill.style.background = 'rgba(255,255,255,0.08)';
                     pill.style.color = 'var(--text-secondary)';
+                    if (unlinkBtn) unlinkBtn.style.display = 'none';
                 }
             } catch (e) {
                 section.style.display = 'none';
+            }
+        }
+
+        /** Teacher clicked "De-link This Number" — logs the linked phone out and shows a fresh QR. */
+        async function unlinkBaileysWhatsApp() {
+            const unlinkBtn = document.getElementById('waBaileysUnlinkBtn');
+            if (!confirm('De-link this WhatsApp number? Recordings will stop sending until you (or someone else) scans a new QR code.')) {
+                return;
+            }
+            if (unlinkBtn) { unlinkBtn.disabled = true; unlinkBtn.textContent = 'De-linking…'; }
+            try {
+                const r = await fetch('/api/host/whatsapp-settings/baileys-unlink', {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                });
+                const data = await r.json().catch(() => ({}));
+                if (!r.ok || !data.success) {
+                    alert('Could not de-link: ' + (data.message || ('HTTP ' + r.status)));
+                    return;
+                }
+                showBaileysQr(); // reveal QR area + start polling for the fresh code
+            } catch (e) {
+                alert('Could not de-link: ' + e.message);
+            } finally {
+                if (unlinkBtn) {
+                    unlinkBtn.disabled = false;
+                    unlinkBtn.innerHTML = '<i class="fas fa-unlink"></i> De-link This Number';
+                }
             }
         }
 

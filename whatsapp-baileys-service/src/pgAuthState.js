@@ -13,6 +13,11 @@ import { initAuthCreds, BufferJSON, proto } from '@whiskeysockets/baileys';
  * using Baileys' own `BufferJSON` replacer/reviver so Buffers round-trip
  * correctly through JSON/JSONB.
  */
+/** Wipes all stored credentials/keys for a session — used by the manual "unlink" flow so a fresh QR can be issued without waiting for WhatsApp to notice a stale session. */
+export async function clearAuthState(pool, sessionId = 'default') {
+    await pool.query('DELETE FROM baileys_auth_state WHERE session_id = $1', [sessionId]);
+}
+
 export async function usePostgresAuthState(pool, sessionId = 'default') {
     await pool.query(`
         CREATE TABLE IF NOT EXISTS baileys_auth_state (

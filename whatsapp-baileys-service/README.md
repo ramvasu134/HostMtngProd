@@ -143,6 +143,12 @@ or delete it entirely — neither affects the main app.
   re-encodes it to Ogg/Opus (see below), and relays it as a WhatsApp audio
   message to the currently-linked number (self-chat) — any `phoneNumber`
   field is ignored by design.
+- `POST /unlink` — header `x-notification-token: <NOTIFICATION_INTERNAL_TOKEN>`.
+  Logs the currently-linked phone out (removed from its WhatsApp → Linked
+  Devices list), clears the stored session, and immediately restarts so a
+  fresh QR is ready. Exposed on the dashboard as the "De-link This Number"
+  button next to the QR code — no need to touch the phone's WhatsApp
+  settings at all, though that also still works.
 
 ## Audio format (why re-encoding is needed)
 

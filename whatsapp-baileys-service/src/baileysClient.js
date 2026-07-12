@@ -3,7 +3,7 @@ import { Boom } from '@hapi/boom';
 import pino from 'pino';
 import QRCode from 'qrcode';
 import pg from 'pg';
-import { usePostgresAuthState } from './pgAuthState.js';
+import { usePostgresAuthState, clearAuthState } from './pgAuthState.js';
 
 const { Pool } = pg;
 const logger = pino({ level: process.env.BAILEYS_LOG_LEVEL || 'warn' });
@@ -12,6 +12,7 @@ let sock = null;
 let latestQr = null; // data URL (base64 PNG) of the most recently issued QR code
 let connectionState = 'starting'; // starting | qr | connecting | open | closed
 let reconnectTimer = null;
+let unlinking = false; // guards against the 'close' handler auto-reconnecting mid-unlink
 
 function buildPool() {
     // Reuses the SAME Postgres database the Java app already has provisioned
@@ -65,6 +66,11 @@ export async function startBaileys() {
             const statusCode = lastDisconnect?.error ? new Boom(lastDisconnect.error).output?.statusCode : null;
             const loggedOut = statusCode === DisconnectReason.loggedOut;
 
+            if (unlinking) {
+                // unlinkSession() below is already handling teardown + restart.
+                return;
+            }
+
             if (loggedOut) {
                 logger.error('[Baileys] Session was logged out from the phone — re-scan the QR code at GET /qr to relink.');
                 return; // Do NOT auto-reconnect; the stored creds are no longer valid.
@@ -110,6 +116,37 @@ export function getStatus() {
 
 export function getQrDataUrl() {
     return latestQr;
+}
+
+/**
+ * Manually de-links the currently-connected WhatsApp number: logs the
+ * session out on WhatsApp's side (removes it from the phone's Linked
+ * Devices list, same as unlinking from the phone), wipes the stored
+ * credentials in Postgres, and immediately restarts so a fresh QR code
+ * is issued for the next scan. Safe to call even if nothing is linked
+ * yet — it just clears any half-finished session and restarts.
+ */
+export async function unlinkSession() {
+    unlinking = true;
+    try {
+        clearTimeout(reconnectTimer);
+        if (sock) {
+            try {
+                await sock.logout();
+            } catch (e) {
+                logger.warn({ err: e }, '[Baileys] logout() during unlink failed (continuing anyway)');
+            }
+        }
+        const sessionId = process.env.BAILEYS_SESSION_ID || 'default';
+        await clearAuthState(pool, sessionId);
+        sock = null;
+        latestQr = null;
+        connectionState = 'starting';
+        logger.info('[Baileys] Unlinked — stored session cleared, restarting for a fresh QR code.');
+    } finally {
+        unlinking = false;
+    }
+    await startBaileys();
 }
 
 /**
