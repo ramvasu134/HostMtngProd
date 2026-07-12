@@ -139,6 +139,23 @@ or delete it entirely — neither affects the main app.
   the current QR code (auto-refreshes). Manual/debug use only — prefer the
   dashboard flow, which never exposes this URL or token to the browser.
 - `POST /send-audio` — body `{ audioUrl, caption? }`, header
-  `x-notification-token: <NOTIFICATION_INTERNAL_TOKEN>`. Downloads `audioUrl`
-  and relays it as a WhatsApp audio message to the currently-linked number
-  (self-chat) — any `phoneNumber` field is ignored by design.
+  `x-notification-token: <NOTIFICATION_INTERNAL_TOKEN>`. Downloads `audioUrl`,
+  re-encodes it to Ogg/Opus (see below), and relays it as a WhatsApp audio
+  message to the currently-linked number (self-chat) — any `phoneNumber`
+  field is ignored by design.
+
+## Audio format (why re-encoding is needed)
+
+The main app's recordings are captured client-side with the browser's
+`MediaRecorder` API as **WebM/Opus** — great for the in-app web player, but
+WhatsApp's mobile client cannot reliably play a raw WebM container as an
+audio-message attachment (you'll see *"Sorry, can't load this audio now"* on
+the recipient's phone), even though the Opus codec inside is the same one
+WhatsApp itself uses for voice notes.
+
+`/send-audio` re-encodes every clip to **Ogg/Opus** (WhatsApp's own
+voice-note format) via `fluent-ffmpeg` + `@ffmpeg-installer/ffmpeg` (a
+bundled static binary — no system package/Dockerfile changes needed, works
+on Render's plain Node runtime) before handing it to Baileys. If conversion
+ever fails for some reason, it falls back to sending the original bytes
+as-is rather than dropping the notification entirely.

@@ -2,6 +2,7 @@ import 'dotenv/config';
 import express from 'express';
 import axios from 'axios';
 import { startBaileys, getStatus, getQrDataUrl, sendAudioMessage } from './baileysClient.js';
+import { convertToOggOpus } from './audioConvert.js';
 
 const app = express();
 app.use(express.json());
@@ -101,8 +102,22 @@ app.post('/send-audio', async (req, res) => {
 
     try {
         const response = await axios.get(audioUrl, { responseType: 'arraybuffer', timeout: 20000 });
-        const mimetype = response.headers['content-type'] || 'audio/mp4';
-        const audioBuffer = Buffer.from(response.data);
+        const sourceMimetype = response.headers['content-type'] || 'audio/mp4';
+        const sourceBuffer = Buffer.from(response.data);
+
+        // Recordings are captured client-side as WebM/Opus (browser MediaRecorder),
+        // which WhatsApp's mobile app cannot reliably play as an audio attachment.
+        // Re-encode to Ogg/Opus (WhatsApp's own voice-note format) before sending;
+        // fall back to the original bytes if conversion ever fails, so a transcode
+        // hiccup degrades to "might not play" rather than "recording never arrives".
+        let audioBuffer = sourceBuffer;
+        let mimetype = sourceMimetype;
+        try {
+            audioBuffer = await convertToOggOpus(sourceBuffer);
+            mimetype = 'audio/ogg; codecs=opus';
+        } catch (convertErr) {
+            console.error('[whatsapp-baileys-service] audio conversion failed, sending original bytes:', convertErr.message);
+        }
 
         const sentTo = await sendAudioMessage(audioBuffer, mimetype, caption);
 
