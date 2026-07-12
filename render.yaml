@@ -122,6 +122,20 @@ services:
       - key: NOTIFICATION_EXTERNAL_RETRY_DELAY_MS
         value: "2000"
 
+      # ── WhatsApp via Baileys (OPTIONAL, free, off by default) ──────────────
+      # Only takes effect if you also deploy the whatsapp-baileys-service
+      # block below (or elsewhere) and link a number — see that folder's
+      # README. Leaving WHATSAPP_BAILEYS_ENABLED=false keeps today's
+      # Twilio/CallMeBot behavior 100% unchanged.
+      - key: WHATSAPP_BAILEYS_ENABLED
+        value: "false"
+      # e.g. https://whatsapp-baileys-service.onrender.com
+      - key: WHATSAPP_BAILEYS_URL
+        sync: false
+      # Must match whatsapp-baileys-service's NOTIFICATION_INTERNAL_TOKEN
+      - key: WHATSAPP_BAILEYS_TOKEN
+        sync: false
+
       # ── Data Seeding (enable once to create superadmin + demo users) ───────
       # After first successful login, set to "false" and redeploy for security
       - key: SEED_ENABLED
@@ -178,4 +192,49 @@ services:
         value: "2000"
       - key: NOTIFICATION_INTERNAL_TOKEN
         generateValue: true
+
+  # ============================================================
+  #  OPTIONAL — whatsapp-baileys-service (free/unofficial WhatsApp sender)
+  #  Does nothing on its own. Only affects the app once you ALSO set
+  #  WHATSAPP_BAILEYS_ENABLED=true + WHATSAPP_BAILEYS_URL above.
+  #  See whatsapp-baileys-service/README.md before enabling this block
+  #  (Terms-of-Service / ban-risk disclaimer, QR-linking steps).
+  #  Remove this block entirely if you don't want to try it.
+  # ============================================================
+  - type: web
+    name: whatsapp-baileys-service
+    runtime: node
+    plan: free
+    region: oregon
+    branch: main
+    rootDir: whatsapp-baileys-service
+    buildCommand: npm install
+    startCommand: node src/server.js
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: 20.18.0
+      - key: PORT
+        value: "3100"
+      # Reuses the SAME Postgres database as host-student-meeting (no new DB, $0 cost)
+      - key: DB_HOST
+        value: dpg-d7hlidn7f7vs738lnim0-a
+      - key: DB_PORT
+        value: "5432"
+      - key: DB_NAME
+        value: meeting_db_sr7r
+      - key: DB_USER
+        value: meeting_user
+      - key: DB_PASSWORD
+        sync: false
+      - key: BAILEYS_SESSION_ID
+        value: default
+      # Must match WHATSAPP_BAILEYS_TOKEN on host-student-meeting above
+      - key: NOTIFICATION_INTERNAL_TOKEN
+        generateValue: true
+      - key: BAILEYS_LOG_LEVEL
+        value: warn
 

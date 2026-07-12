@@ -36,8 +36,17 @@ import java.util.concurrent.ConcurrentLinkedDeque;
 /**
  * Sends WhatsApp messages to teachers when a new recording is saved.
  *
- * <h2>Provider strategy (Twilio-primary as of v2)</h2>
+ * <h2>Provider strategy (Twilio-primary as of v2, optional Baileys as of v3)</h2>
  * <ol>
+ *   <li><b>Baileys</b> (optional, FREE, off by default). Only tried when
+ *       {@code app.whatsapp.baileys.enabled=true} AND
+ *       {@code app.whatsapp.baileys.url} point at a running
+ *       {@code whatsapp-baileys-service} instance (see that module's README).
+ *       Uses the unofficial WhatsApp-Web protocol — zero per-message cost,
+ *       but no delivery receipts and a small ToS/ban risk on the linked
+ *       number. On ANY failure (not configured, not linked, network error)
+ *       this silently falls through to the chain below — it can only ever
+ *       ADD a free delivery attempt, never remove the existing paths.</li>
  *   <li><b>Twilio WhatsApp API</b> (primary, recommended). Used whenever the
  *       admin has set the {@code TWILIO_ACCOUNT_SID}, {@code TWILIO_AUTH_TOKEN}
  *       and {@code FROM_WHATSAPP_NUMBER} environment variables. Twilio gives
@@ -80,6 +89,19 @@ public class WhatsAppNotificationService {
     @Value("${app.whatsapp.callmebot.initial-backoff-ms:1000}")
     private long callmebotInitialBackoffMs;
 
+    // ── Baileys (optional, free, off by default) ────────────────────────────
+    /** Master switch — default false means zero behavior change out of the box. */
+    @Value("${app.whatsapp.baileys.enabled:false}")
+    private boolean baileysEnabled;
+
+    /** Base URL of the standalone whatsapp-baileys-service, e.g. https://wa-baileys.onrender.com */
+    @Value("${app.whatsapp.baileys.url:}")
+    private String baileysUrl;
+
+    /** Shared secret sent as x-notification-token; must match that service's NOTIFICATION_INTERNAL_TOKEN. */
+    @Value("${app.whatsapp.baileys.token:}")
+    private String baileysToken;
+
     private boolean twilioReady = false;
 
     @Autowired
@@ -88,6 +110,9 @@ public class WhatsAppNotificationService {
     private final HttpClient httpClient = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(10))
             .build();
+
+    private static final com.fasterxml.jackson.databind.ObjectMapper JSON =
+            new com.fasterxml.jackson.databind.ObjectMapper();
 
     /** Per-teacher ring-buffer of recent send attempts (newest first). */
     private final Map<Long, Deque<NotificationStatus>> statusByTeacher = new ConcurrentHashMap<>();
@@ -119,6 +144,16 @@ public class WhatsAppNotificationService {
         } else {
             log.info("WhatsApp: Twilio NOT configured — falling back to per-teacher CallMeBot keys. " +
                      "To enable Twilio set TWILIO_ACCOUNT_SID + TWILIO_AUTH_TOKEN + TWILIO_WHATSAPP_FROM.");
+        }
+
+        baileysUrl = baileysUrl == null ? "" : baileysUrl.trim();
+        baileysToken = baileysToken == null ? "" : baileysToken.trim();
+        if (baileysEnabled && !isBlank(baileysUrl)) {
+            log.info("WhatsApp: optional free Baileys provider ENABLED (url={}). Tried first for audio " +
+                     "notifications; falls back to Twilio/CallMeBot on any failure.", baileysUrl);
+        } else if (baileysEnabled) {
+            log.warn("WhatsApp: app.whatsapp.baileys.enabled=true but app.whatsapp.baileys.url is not set — " +
+                     "Baileys provider will be skipped, no behavior change.");
         }
     }
 
@@ -411,6 +446,25 @@ public class WhatsAppNotificationService {
 
     private DispatchOutcome dispatch(User teacher, String to, String body, String mediaUrl,
                                      Recording recording, User student) {
+        // 0) Baileys (optional, free, off by default) — only makes sense when
+        // there's an audio clip to attach, and only tried when explicitly
+        // configured. ANY failure here falls through to the untouched
+        // Twilio → CallMeBot chain below, so this can only add a free
+        // delivery attempt — it never removes/weakens existing behavior.
+        if (baileysEnabled && !isBlank(baileysUrl) && !isBlank(mediaUrl)) {
+            BaileysSendResult br = sendViaBaileys(to, mediaUrl, body);
+            if (br.success) {
+                NotificationStatus s = logStatus(teacher, recording, student,
+                        NotificationResult.SUCCESS, "Baileys (free WhatsApp-Web) accepted");
+                s.provider = "Baileys";
+                s.lifecycle = NotificationLifecycle.SENT;
+                return DispatchOutcome.ok(
+                        "Audio sent successfully to " + to + " via Baileys (free)", null);
+            }
+            log.info("Baileys attempt failed for teacher '{}' (falling back to Twilio/CallMeBot): {}",
+                    teacher.getUsername(), br.error);
+        }
+
         // 1) Twilio first when admin has configured it
         if (twilioReady) {
             TwilioSendResult tr = sendViaTwilio(to, body, mediaUrl);
@@ -491,6 +545,43 @@ public class WhatsAppNotificationService {
         } catch (Exception e) {
             log.error("Twilio unexpected error to {}: {}", toNumber, e.getMessage());
             return TwilioSendResult.fail(e.getMessage() != null ? e.getMessage() : "unknown error");
+        }
+    }
+
+    /**
+     * Optional free provider — POSTs to the standalone {@code whatsapp-baileys-service}
+     * (see that module's README). That service downloads {@code mediaUrl} itself and
+     * relays it as a WhatsApp audio message over the unofficial WhatsApp-Web protocol.
+     * Any error (network, not-linked, timeout) is caught and reported so the caller
+     * can fall back to Twilio/CallMeBot without interrupting the send.
+     */
+    private BaileysSendResult sendViaBaileys(String toNumber, String mediaUrl, String caption) {
+        try {
+            com.fasterxml.jackson.databind.node.ObjectNode payload = JSON.createObjectNode();
+            payload.put("phoneNumber", toNumber);
+            payload.put("audioUrl", mediaUrl);
+            if (!isBlank(caption)) {
+                payload.put("caption", caption);
+            }
+            HttpRequest.Builder builder = HttpRequest.newBuilder()
+                    .uri(URI.create(baileysUrl.replaceAll("/+$", "") + "/send-audio"))
+                    .timeout(Duration.ofSeconds(25))
+                    .header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(JSON.writeValueAsString(payload)));
+            if (!isBlank(baileysToken)) {
+                builder.header("x-notification-token", baileysToken);
+            }
+            HttpResponse<String> res = httpClient.send(builder.build(), HttpResponse.BodyHandlers.ofString());
+            String responseBody = res.body() != null ? res.body() : "";
+            if (res.statusCode() >= 200 && res.statusCode() < 300) {
+                log.info("Baileys send OK to {} (HTTP {})", toNumber, res.statusCode());
+                return BaileysSendResult.ok();
+            }
+            log.warn("Baileys send failed to {} (HTTP {}): {}", toNumber, res.statusCode(), responseBody);
+            return BaileysSendResult.fail("HTTP " + res.statusCode() + ": " + responseBody);
+        } catch (Exception e) {
+            log.warn("Baileys send exception for {}: {}", toNumber, e.getMessage());
+            return BaileysSendResult.fail(e.getMessage() != null ? e.getMessage() : "unknown error");
         }
     }
 
@@ -827,6 +918,15 @@ public class WhatsAppNotificationService {
         }
         static TwilioSendResult ok(String sid)   { return new TwilioSendResult(true,  sid,  null); }
         static TwilioSendResult fail(String err) { return new TwilioSendResult(false, null, err); }
+    }
+
+    /** Small internal value-class so dispatch() can branch on the optional Baileys result. */
+    private static final class BaileysSendResult {
+        final boolean success;
+        final String error;
+        private BaileysSendResult(boolean success, String error) { this.success = success; this.error = error; }
+        static BaileysSendResult ok()            { return new BaileysSendResult(true,  null); }
+        static BaileysSendResult fail(String err){ return new BaileysSendResult(false, err); }
     }
 
     /** @return true when Twilio is the active primary provider. */
