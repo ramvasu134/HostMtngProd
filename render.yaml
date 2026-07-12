@@ -114,9 +114,14 @@ services:
       # Public HTTPS endpoint of notification-service, e.g. https://notification-service.onrender.com/notify
       - key: NOTIFICATION_EXTERNAL_URL
         sync: false
-      # Must match notification-service NOTIFICATION_INTERNAL_TOKEN
+      # Auto-synced from notification-service's generated NOTIFICATION_INTERNAL_TOKEN
+      # (see WHATSAPP_BAILEYS_TOKEN below for why fromService is required here
+      # instead of a second independent generateValue: true).
       - key: NOTIFICATION_EXTERNAL_TOKEN
-        sync: false
+        fromService:
+          type: web
+          name: notification-service
+          envVarKey: NOTIFICATION_INTERNAL_TOKEN
       - key: NOTIFICATION_EXTERNAL_MAX_ATTEMPTS
         value: "3"
       - key: NOTIFICATION_EXTERNAL_RETRY_DELAY_MS
@@ -132,9 +137,14 @@ services:
       # e.g. https://whatsapp-baileys-service.onrender.com
       - key: WHATSAPP_BAILEYS_URL
         sync: false
-      # Must match whatsapp-baileys-service's NOTIFICATION_INTERNAL_TOKEN
+      # Auto-synced from whatsapp-baileys-service's generated NOTIFICATION_INTERNAL_TOKEN
+      # (fromService pulls the *actual* generated value — generateValue on both sides
+      # independently would NOT match, since each service generates its own random value).
       - key: WHATSAPP_BAILEYS_TOKEN
-        sync: false
+        fromService:
+          type: web
+          name: whatsapp-baileys-service
+          envVarKey: NOTIFICATION_INTERNAL_TOKEN
 
       # ── Data Seeding (enable once to create superadmin + demo users) ───────
       # After first successful login, set to "false" and redeploy for security
@@ -232,7 +242,8 @@ services:
         sync: false
       - key: BAILEYS_SESSION_ID
         value: default
-      # Must match WHATSAPP_BAILEYS_TOKEN on host-student-meeting above
+      # Source of truth for WHATSAPP_BAILEYS_TOKEN on host-student-meeting above
+      # (that service pulls this exact generated value via fromService).
       - key: NOTIFICATION_INTERNAL_TOKEN
         generateValue: true
       - key: BAILEYS_LOG_LEVEL

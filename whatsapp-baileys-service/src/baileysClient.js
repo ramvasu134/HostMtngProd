@@ -57,7 +57,7 @@ export async function startBaileys() {
         if (connection === 'open') {
             connectionState = 'open';
             latestQr = null;
-            logger.info('[Baileys] WhatsApp linked and connected.');
+            logger.info(`[Baileys] WhatsApp linked and connected. Outbound audio will go to ${getLinkedNumber() || '(unknown)'} (self-chat).`);
         }
 
         if (connection === 'close') {
@@ -79,32 +79,62 @@ export async function startBaileys() {
     });
 }
 
+/**
+ * The phone number of whichever WhatsApp account most recently scanned the
+ * QR code (E.164-ish, e.g. "+919876543210"). This is intentionally the
+ * ONLY destination outbound audio ever goes to — see sendAudioMessage().
+ * Re-scanning the QR with a different phone replaces this value, and all
+ * subsequent recordings go to the new number instead.
+ */
+function getLinkedNumber() {
+    const rawId = sock?.user?.id;
+    if (!rawId) return null;
+    const digits = String(rawId).split(':')[0].replace(/[^0-9]/g, '');
+    return digits ? `+${digits}` : null;
+}
+
+function getSelfJid() {
+    const rawId = sock?.user?.id;
+    if (!rawId) return null;
+    const digits = String(rawId).split(':')[0].replace(/[^0-9]/g, '');
+    return digits ? `${digits}@s.whatsapp.net` : null;
+}
+
 export function getStatus() {
-    return { connectionState, hasQr: !!latestQr };
+    return {
+        connectionState,
+        hasQr: !!latestQr,
+        linkedNumber: connectionState === 'open' ? getLinkedNumber() : null,
+    };
 }
 
 export function getQrDataUrl() {
     return latestQr;
 }
 
-function toJid(phoneNumber) {
-    const digits = String(phoneNumber).replace(/[^0-9]/g, '');
-    return `${digits}@s.whatsapp.net`;
-}
-
 /**
  * Sends an audio file as a WhatsApp message.
- * @param {string} phoneNumber E.164-ish number, e.g. "+919876543210"
+ *
+ * IMPORTANT: this ALWAYS delivers to the currently-linked WhatsApp account's
+ * own chat (WhatsApp's "Message Yourself" feature) — i.e. whichever number
+ * scanned the QR code. There is deliberately no per-call destination
+ * override: this service has exactly one active recipient at a time, which
+ * only changes when someone re-scans the QR with a different phone.
+ *
  * @param {Buffer} audioBuffer Raw audio bytes already downloaded server-side
  * @param {string} mimetype e.g. "audio/mp4", "audio/ogg; codecs=opus"
  * @param {string} [caption] Optional follow-up text message (audio messages
  *                            in WhatsApp don't support a caption directly)
+ * @returns {Promise<string>} the E.164-ish number the message was sent to
  */
-export async function sendAudioMessage(phoneNumber, audioBuffer, mimetype, caption) {
+export async function sendAudioMessage(audioBuffer, mimetype, caption) {
     if (!sock || connectionState !== 'open') {
-        throw new Error('WhatsApp is not connected yet. Open GET /qr on this service to link a number.');
+        throw new Error('WhatsApp is not connected yet. Link a number first (see /qr-data).');
     }
-    const jid = toJid(phoneNumber);
+    const jid = getSelfJid();
+    if (!jid) {
+        throw new Error('Could not resolve the linked WhatsApp number.');
+    }
     await sock.sendMessage(jid, {
         audio: audioBuffer,
         mimetype: mimetype || 'audio/mp4',
@@ -113,4 +143,5 @@ export async function sendAudioMessage(phoneNumber, audioBuffer, mimetype, capti
     if (caption) {
         await sock.sendMessage(jid, { text: caption });
     }
+    return getLinkedNumber();
 }

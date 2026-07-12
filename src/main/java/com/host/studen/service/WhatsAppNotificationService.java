@@ -452,14 +452,18 @@ public class WhatsAppNotificationService {
         // Twilio → CallMeBot chain below, so this can only add a free
         // delivery attempt — it never removes/weakens existing behavior.
         if (baileysEnabled && !isBlank(baileysUrl) && !isBlank(mediaUrl)) {
-            BaileysSendResult br = sendViaBaileys(to, mediaUrl, body);
+            BaileysSendResult br = sendViaBaileys(mediaUrl, body);
             if (br.success) {
                 NotificationStatus s = logStatus(teacher, recording, student,
-                        NotificationResult.SUCCESS, "Baileys (free WhatsApp-Web) accepted");
+                        NotificationResult.SUCCESS,
+                        "Baileys (free WhatsApp-Web) accepted — delivered to linked number "
+                                + (br.sentTo != null ? br.sentTo : "(unknown)"));
                 s.provider = "Baileys";
                 s.lifecycle = NotificationLifecycle.SENT;
                 return DispatchOutcome.ok(
-                        "Audio sent successfully to " + to + " via Baileys (free)", null);
+                        "Audio sent successfully via Baileys (free) to the linked WhatsApp number"
+                                + (br.sentTo != null ? " (" + br.sentTo + ")" : ""),
+                        null);
             }
             log.info("Baileys attempt failed for teacher '{}' (falling back to Twilio/CallMeBot): {}",
                     teacher.getUsername(), br.error);
@@ -554,11 +558,17 @@ public class WhatsAppNotificationService {
      * relays it as a WhatsApp audio message over the unofficial WhatsApp-Web protocol.
      * Any error (network, not-linked, timeout) is caught and reported so the caller
      * can fall back to Twilio/CallMeBot without interrupting the send.
+     *
+     * <p>Note there's no destination phone number in this request — the Node
+     * service always delivers to whichever number is currently linked (see
+     * that module's README / "self-chat" design), never to an arbitrary
+     * per-teacher number. This is intentional: only a teacher can link a
+     * number (via the dashboard-gated QR flow), and re-linking replaces the
+     * single active recipient for everyone.
      */
-    private BaileysSendResult sendViaBaileys(String toNumber, String mediaUrl, String caption) {
+    private BaileysSendResult sendViaBaileys(String mediaUrl, String caption) {
         try {
             com.fasterxml.jackson.databind.node.ObjectNode payload = JSON.createObjectNode();
-            payload.put("phoneNumber", toNumber);
             payload.put("audioUrl", mediaUrl);
             if (!isBlank(caption)) {
                 payload.put("caption", caption);
@@ -574,16 +584,65 @@ public class WhatsAppNotificationService {
             HttpResponse<String> res = httpClient.send(builder.build(), HttpResponse.BodyHandlers.ofString());
             String responseBody = res.body() != null ? res.body() : "";
             if (res.statusCode() >= 200 && res.statusCode() < 300) {
-                log.info("Baileys send OK to {} (HTTP {})", toNumber, res.statusCode());
-                return BaileysSendResult.ok();
+                String sentTo = null;
+                try {
+                    sentTo = JSON.readTree(responseBody).path("sentTo").asText(null);
+                } catch (Exception ignored) { /* best-effort only */ }
+                log.info("Baileys send OK (HTTP {}, sentTo={})", res.statusCode(), sentTo);
+                return BaileysSendResult.ok(sentTo);
             }
-            log.warn("Baileys send failed to {} (HTTP {}): {}", toNumber, res.statusCode(), responseBody);
+            log.warn("Baileys send failed (HTTP {}): {}", res.statusCode(), responseBody);
             return BaileysSendResult.fail("HTTP " + res.statusCode() + ": " + responseBody);
         } catch (Exception e) {
-            log.warn("Baileys send exception for {}: {}", toNumber, e.getMessage());
+            log.warn("Baileys send exception: {}", e.getMessage());
             return BaileysSendResult.fail(e.getMessage() != null ? e.getMessage() : "unknown error");
         }
     }
+
+    /**
+     * Fetches live linking status from the standalone whatsapp-baileys-service
+     * so the TEACHER-ONLY dashboard endpoint can render a QR code / show which
+     * number is currently linked. Never called from anything student-facing.
+     */
+    public BaileysStatusDto getBaileysStatus() {
+        if (!baileysEnabled || isBlank(baileysUrl)) {
+            return new BaileysStatusDto(false, baileysEnabled, null, null, null, null);
+        }
+        try {
+            HttpRequest.Builder builder = HttpRequest.newBuilder()
+                    .uri(URI.create(baileysUrl.replaceAll("/+$", "") + "/qr-data"))
+                    .timeout(Duration.ofSeconds(10))
+                    .GET();
+            if (!isBlank(baileysToken)) {
+                builder.header("x-notification-token", baileysToken);
+            }
+            HttpResponse<String> res = httpClient.send(builder.build(), HttpResponse.BodyHandlers.ofString());
+            if (res.statusCode() != 200) {
+                return new BaileysStatusDto(true, true, "unreachable", null, null,
+                        "HTTP " + res.statusCode());
+            }
+            com.fasterxml.jackson.databind.JsonNode node = JSON.readTree(res.body());
+            String connectionState = node.path("connectionState").asText(null);
+            String linkedNumber = node.hasNonNull("linkedNumber") ? node.get("linkedNumber").asText() : null;
+            String qrDataUrl = node.hasNonNull("qrDataUrl") ? node.get("qrDataUrl").asText() : null;
+            return new BaileysStatusDto(true, true, connectionState, linkedNumber, qrDataUrl, null);
+        } catch (Exception e) {
+            log.warn("Baileys status check failed: {}", e.getMessage());
+            return new BaileysStatusDto(true, true, "unreachable", null, null, e.getMessage());
+        }
+    }
+
+    /**
+     * Teacher-facing snapshot of the optional Baileys provider.
+     * @param configured   true when {@code app.whatsapp.baileys.enabled=true} AND a URL is set
+     * @param enabled      raw value of the master switch (may be true even if url is blank)
+     * @param connectionState "starting" | "qr" | "open" | "closed" | "unreachable" | null
+     * @param linkedNumber the number currently linked (self-chat destination), or null
+     * @param qrDataUrl    base64 PNG data URL of the current QR code, or null
+     * @param error        best-effort error message when the status check itself failed
+     */
+    public record BaileysStatusDto(boolean configured, boolean enabled, String connectionState,
+                                    String linkedNumber, String qrDataUrl, String error) {}
 
     /**
      * CallMeBot WhatsApp send (fallback). All query parameters are
@@ -923,10 +982,13 @@ public class WhatsAppNotificationService {
     /** Small internal value-class so dispatch() can branch on the optional Baileys result. */
     private static final class BaileysSendResult {
         final boolean success;
+        final String sentTo;
         final String error;
-        private BaileysSendResult(boolean success, String error) { this.success = success; this.error = error; }
-        static BaileysSendResult ok()            { return new BaileysSendResult(true,  null); }
-        static BaileysSendResult fail(String err){ return new BaileysSendResult(false, err); }
+        private BaileysSendResult(boolean success, String sentTo, String error) {
+            this.success = success; this.sentTo = sentTo; this.error = error;
+        }
+        static BaileysSendResult ok(String sentTo)  { return new BaileysSendResult(true,  sentTo, null); }
+        static BaileysSendResult fail(String err)   { return new BaileysSendResult(false, null,   err); }
     }
 
     /** @return true when Twilio is the active primary provider. */

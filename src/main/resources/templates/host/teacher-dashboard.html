@@ -2885,6 +2885,43 @@
                     <i class="fas fa-spinner fa-spin"></i> Detecting provider…
                 </div>
 
+                <!-- ╔═══════════════════════════════════════════════════════╗
+                     ║  Free WhatsApp (Baileys) — TEACHER-ONLY. This section  ║
+                     ║  only exists on this host dashboard page (already     ║
+                     ║  gated by hasRole('HOST') at the URL level) and its    ║
+                     ║  data comes from a @PreAuthorize("hasRole('HOST')")    ║
+                     ║  endpoint — students have no path to reach this QR.   ║
+                     ╚═══════════════════════════════════════════════════════╝ -->
+                <div id="waBaileysSection" style="display:none; background:rgba(37,211,102,0.08);
+                            border:1px solid rgba(37,211,102,0.30); border-radius:10px; padding:10px 12px;
+                            margin-bottom:14px; font-size:12px; color:var(--text-secondary); line-height:1.6;">
+                    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
+                        <span style="color:#6ee7b7; font-weight:700;">
+                            <i class="fab fa-whatsapp"></i> Free WhatsApp (Beta) — you only
+                        </span>
+                        <span id="waBaileysStatusPill"
+                              style="font-size:11px; padding:2px 8px; border-radius:20px;
+                                     background:rgba(255,255,255,0.08); white-space:nowrap;">checking…</span>
+                    </div>
+                    <div style="margin-bottom:8px;">
+                        Recordings can also be sent for free, straight to whichever number
+                        <b>you personally</b> link below by scanning a QR code with your own phone.
+                        Students never see this option — it only appears here, on your own dashboard.
+                        Re-scanning with a different phone replaces the linked number for everyone.
+                    </div>
+                    <div id="waBaileysQrArea" style="display:none; text-align:center; margin:10px 0;">
+                        <img id="waBaileysQrImg" src="" alt="Scan with WhatsApp"
+                             style="width:220px;height:220px;border-radius:8px;background:#fff;padding:6px;" />
+                        <div style="margin-top:6px;color:var(--text-muted);font-size:11px;">
+                            WhatsApp app &rarr; Settings &rarr; Linked Devices &rarr; Link a Device
+                        </div>
+                    </div>
+                    <button class="btn-secondary" id="waBaileysQrBtn" onclick="showBaileysQr()"
+                            style="padding:6px 12px;font-size:12px;">
+                        <i class="fas fa-qrcode"></i> Show QR to Link My WhatsApp
+                    </button>
+                </div>
+
                 <div style="background:rgba(99,102,241,0.08); border:1px solid rgba(99,102,241,0.30);
                             border-radius:10px; padding:10px 12px; margin-bottom:14px; font-size:12px;
                             color:var(--text-secondary); line-height:1.6;">
@@ -3383,8 +3420,73 @@
                 })
                 .catch(() => {});
             loadWhatsappStatus();
+            loadBaileysStatus();
             openModal('whatsappModal');
             startWhatsappStatusPolling();
+        }
+
+        // ===== Free WhatsApp (Baileys) — teacher-only QR linking =====
+        // This whole block only runs from this host dashboard page, which is
+        // already restricted to hasRole('HOST') at the URL level, and every
+        // fetch below hits a @PreAuthorize("hasRole('HOST')") endpoint. There
+        // is no code path here a student account could reach.
+        let _waBaileysPoll = null;
+
+        async function loadBaileysStatus() {
+            const section = document.getElementById('waBaileysSection');
+            const pill = document.getElementById('waBaileysStatusPill');
+            const qrArea = document.getElementById('waBaileysQrArea');
+            const qrImg = document.getElementById('waBaileysQrImg');
+            if (!section || !pill) return;
+            try {
+                const r = await fetch('/api/host/whatsapp-settings/baileys-status', { credentials: 'same-origin' });
+                if (!r.ok) { section.style.display = 'none'; return; }
+                const data = await r.json();
+                if (!data.configured) {
+                    // Admin hasn't deployed/enabled the optional Baileys service — hide the section entirely.
+                    section.style.display = 'none';
+                    return;
+                }
+                section.style.display = 'block';
+                if (data.connectionState === 'open') {
+                    pill.textContent = 'Linked: ' + (data.linkedNumber || 'unknown');
+                    pill.style.background = 'rgba(34,197,94,0.20)';
+                    pill.style.color = '#86efac';
+                    if (qrArea) qrArea.style.display = 'none';
+                    stopBaileysQrPolling();
+                } else if (data.qrDataUrl) {
+                    pill.textContent = 'Scan required';
+                    pill.style.background = 'rgba(234,179,8,0.20)';
+                    pill.style.color = '#fde047';
+                    if (qrImg) qrImg.src = data.qrDataUrl;
+                    if (qrArea) qrArea.style.display = 'block';
+                } else {
+                    pill.textContent = data.connectionState || 'starting…';
+                    pill.style.background = 'rgba(255,255,255,0.08)';
+                    pill.style.color = 'var(--text-secondary)';
+                }
+            } catch (e) {
+                section.style.display = 'none';
+            }
+        }
+
+        function showBaileysQr() {
+            const qrArea = document.getElementById('waBaileysQrArea');
+            if (qrArea) qrArea.style.display = 'block';
+            loadBaileysStatus();
+            if (!_waBaileysPoll) {
+                _waBaileysPoll = setInterval(() => {
+                    const modal = document.getElementById('whatsappModal');
+                    if (!modal || !modal.classList.contains('show')) {
+                        stopBaileysQrPolling();
+                        return;
+                    }
+                    loadBaileysStatus();
+                }, 4000);
+            }
+        }
+        function stopBaileysQrPolling() {
+            if (_waBaileysPoll) { clearInterval(_waBaileysPoll); _waBaileysPoll = null; }
         }
 
         /** Pulls the per-teacher recent send log and renders it inside the modal. */

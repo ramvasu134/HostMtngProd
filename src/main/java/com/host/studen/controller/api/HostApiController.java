@@ -6,6 +6,7 @@ import com.host.studen.security.CustomUserDetails;
 import com.host.studen.service.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
@@ -531,6 +532,36 @@ public class HostApiController {
             ));
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(Map.of("success", false, "message", e.getMessage()));
+        }
+    }
+
+    /**
+     * TEACHER-ONLY. Returns live status of the optional, free Baileys
+     * WhatsApp provider (QR-link state, currently-linked number, and the
+     * QR image itself as a data URL) so the dashboard can render it inline.
+     *
+     * <p>Explicitly role-gated with {@code @PreAuthorize} (on top of this
+     * controller's normal session auth) so there is no path by which a
+     * student account could ever reach the QR code or linking flow — per
+     * spec, only a Teacher/Host can see or use this.
+     */
+    @GetMapping("/whatsapp-settings/baileys-status")
+    @PreAuthorize("hasRole('HOST')")
+    public ResponseEntity<?> getBaileysStatus() {
+        try {
+            WhatsAppNotificationService.BaileysStatusDto status = whatsAppNotificationService.getBaileysStatus();
+            Map<String, Object> resp = new HashMap<>();
+            resp.put("configured", status.configured());
+            resp.put("enabled", status.enabled());
+            resp.put("connectionState", status.connectionState());
+            resp.put("linkedNumber", status.linkedNumber());
+            resp.put("qrDataUrl", status.qrDataUrl());
+            if (status.error() != null) {
+                resp.put("error", status.error());
+            }
+            return ResponseEntity.ok(resp);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("configured", false, "message", e.getMessage()));
         }
     }
 }

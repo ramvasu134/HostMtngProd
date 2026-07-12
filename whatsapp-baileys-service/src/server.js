@@ -15,15 +15,40 @@ app.get('/status', (_req, res) => {
 });
 
 /**
- * One-time linking page. Open this in a browser, scan with the WhatsApp app
- * (Settings -> Linked Devices -> Link a Device) using the number you want
- * outbound audio clips to be sent FROM. The session is then persisted in
- * Postgres, so this only needs to be done again if the phone unlinks it.
+ * GET /qr-data — server-to-server JSON endpoint, protected by the same
+ * shared secret as /send-audio. This is what the Java app's teacher-only
+ * dashboard endpoint calls to render the QR inline for the logged-in
+ * teacher; it is NOT meant to be opened directly in a browser.
  */
-app.get('/qr', (_req, res) => {
+app.get('/qr-data', (req, res) => {
+    const requestToken = req.header('x-notification-token');
+    const expectedToken = process.env.NOTIFICATION_INTERNAL_TOKEN;
+    if (expectedToken && requestToken !== expectedToken) {
+        return res.status(401).json({ success: false, message: 'Unauthorized.' });
+    }
+    const status = getStatus();
+    return res.status(200).json({
+        connectionState: status.connectionState,
+        linkedNumber: status.linkedNumber,
+        qrDataUrl: getQrDataUrl(),
+    });
+});
+
+/**
+ * Human-facing linking page — kept for manual/debug use only. The intended
+ * flow is the teacher dashboard (which proxies /qr-data server-to-server
+ * and never exposes this URL or its token to students). Since this raw URL
+ * could still be guessed/discovered directly, it also requires the shared
+ * secret as a query param: /qr?token=...
+ */
+app.get('/qr', (req, res) => {
+    const expectedToken = process.env.NOTIFICATION_INTERNAL_TOKEN;
+    if (expectedToken && req.query.token !== expectedToken) {
+        return res.status(401).send('<h2>&#128274; Unauthorized. This page requires a valid ?token=.</h2>');
+    }
     const status = getStatus();
     if (status.connectionState === 'open') {
-        return res.send('<h2>&#9989; WhatsApp is already linked and connected.</h2>');
+        return res.send(`<h2>&#9989; WhatsApp is linked and connected.</h2><p>Outbound audio goes to: <b>${status.linkedNumber || '(unknown)'}</b></p>`);
     }
     const dataUrl = getQrDataUrl();
     if (!dataUrl) {
@@ -35,7 +60,8 @@ app.get('/qr', (_req, res) => {
             <h2>Scan this QR code with WhatsApp</h2>
             <p>WhatsApp app &rarr; Settings &rarr; Linked Devices &rarr; Link a Device</p>
             <img src="${dataUrl}" alt="WhatsApp QR code" style="width:300px;height:300px;" />
-            <p><small>This page auto-refreshes every 5 seconds until linked.</small></p>
+            <p><small>This page auto-refreshes every 5 seconds until linked.<br>
+            Whichever number scans this QR becomes the ONLY number outbound audio is sent to.</small></p>
             <script>setTimeout(function () { window.location.reload(); }, 5000);</script>
         </body></html>
     `);
@@ -43,12 +69,15 @@ app.get('/qr', (_req, res) => {
 
 /**
  * POST /send-audio
- * Body: { phoneNumber: "+919876543210", audioUrl: "https://...m4a", caption?: "..." }
+ * Body: { audioUrl: "https://...m4a", caption?: "..." }
  * Header: x-notification-token: <shared secret, matches NOTIFICATION_INTERNAL_TOKEN>
  *
  * Downloads the audio from the given public URL (the Java app's existing
- * public recording endpoint) and relays it as a WhatsApp audio message via
- * the linked Baileys session.
+ * public recording endpoint) and relays it as a WhatsApp audio message to
+ * the CURRENTLY LINKED number only (see sendAudioMessage doc). Any
+ * "phoneNumber" field in the body is intentionally ignored — this service
+ * has exactly one active recipient at a time, determined solely by which
+ * phone most recently scanned the QR code.
  */
 app.post('/send-audio', async (req, res) => {
     const requestToken = req.header('x-notification-token');
@@ -57,16 +86,16 @@ app.post('/send-audio', async (req, res) => {
         return res.status(401).json({ success: false, message: 'Unauthorized notification trigger.' });
     }
 
-    const { phoneNumber, audioUrl, caption } = req.body || {};
-    if (!phoneNumber || !audioUrl) {
-        return res.status(400).json({ success: false, message: 'phoneNumber and audioUrl are required.' });
+    const { audioUrl, caption } = req.body || {};
+    if (!audioUrl) {
+        return res.status(400).json({ success: false, message: 'audioUrl is required.' });
     }
 
     const status = getStatus();
     if (status.connectionState !== 'open') {
         return res.status(503).json({
             success: false,
-            message: 'WhatsApp is not linked yet. Open GET /qr on this service to link a number.',
+            message: 'WhatsApp is not linked yet. Link a number first (see /qr-data).',
         });
     }
 
@@ -75,9 +104,9 @@ app.post('/send-audio', async (req, res) => {
         const mimetype = response.headers['content-type'] || 'audio/mp4';
         const audioBuffer = Buffer.from(response.data);
 
-        await sendAudioMessage(phoneNumber, audioBuffer, mimetype, caption);
+        const sentTo = await sendAudioMessage(audioBuffer, mimetype, caption);
 
-        return res.status(200).json({ success: true, message: 'Audio sent via WhatsApp (Baileys).' });
+        return res.status(200).json({ success: true, message: 'Audio sent via WhatsApp (Baileys).', sentTo });
     } catch (err) {
         console.error('[whatsapp-baileys-service] /send-audio failed:', err.message);
         return res.status(500).json({ success: false, message: err.message });

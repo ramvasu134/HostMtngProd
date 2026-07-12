@@ -11,6 +11,23 @@ It does nothing until you deploy it **and** explicitly turn it on in the
 Java app's config. If you never do either, nothing about the app's current
 behavior changes.
 
+## Who can link/see this, and where audio goes (important)
+
+- **Teacher-only.** The QR-linking UI lives exclusively inside the teacher
+  dashboard's WhatsApp settings (a page already restricted to the `HOST`
+  role at the URL level), and its data comes from a
+  `@PreAuthorize("hasRole('HOST')")` Spring endpoint. **Students have no
+  page, button, link, or API that can ever show them a QR code.**
+- **Single active recipient — self-chat.** There is no per-teacher "typed
+  number" for this provider. Whichever phone scans the QR becomes both the
+  bot's identity *and* its only destination: every outbound audio clip is
+  sent to that same number via WhatsApp's "Message Yourself" feature.
+  `phoneNumber` fields sent to `/send-audio` are ignored on purpose.
+- **Re-linking replaces it.** If a different phone scans the QR later
+  (e.g. another teacher, or the same teacher with a new number), that
+  becomes the new sole recipient for all future recordings — the old
+  number stops receiving anything.
+
 ## Does it actually work? (honest analysis)
 
 **Yes, technically it works** — Baileys is actively maintained, doesn't need
@@ -64,14 +81,21 @@ Required env vars (see `.env.example`):
 
 ### 2. Link a WhatsApp number
 
-Open `https://<this-service-url>/qr` in a browser. Scan the QR code from
-**WhatsApp app → Settings → Linked Devices → Link a Device** on the phone
-number you want outbound audio clips to be sent *from*. Use a spare number
-if you're worried about ban risk on your primary one.
+**Recommended:** do this from the teacher dashboard (WhatsApp Notifications
+→ "Free WhatsApp (Beta)" section → "Show QR to Link My WhatsApp"), once
+step 3 below is configured. That page proxies the QR through an
+authenticated, teacher-only Spring endpoint — the raw URL below is never
+exposed to the browser and no token leaves the server.
+
+**Manual/debug fallback:** open `https://<this-service-url>/qr?token=<NOTIFICATION_INTERNAL_TOKEN>`
+directly. Scan the QR with **WhatsApp app → Settings → Linked Devices →
+Link a Device** on the phone number you want to both send *and receive* on
+(see "self-chat" above). Use a spare number if you're worried about ban
+risk on your primary one.
 
 Once linked, the session is saved to Postgres — you won't need to re-scan
 on future redeploys/restarts (only if the phone unlinks the device, or you
-switch to a new number).
+deliberately scan again with a different number).
 
 ### 3. Enable it in the Java app
 
@@ -89,9 +113,12 @@ Or as env vars: `WHATSAPP_BAILEYS_ENABLED=true`, `WHATSAPP_BAILEYS_URL=...`,
 
 ### 4. Test
 
-Use the dashboard's existing "Send Test" WhatsApp button, or trigger a
-recording. Watch this service's logs — you'll see `[Baileys] ...` lines and
-`/send-audio` requests coming from the Java app.
+Trigger a recording (or wait for a real one). Watch this service's logs —
+you'll see `[Baileys] ...` lines and `/send-audio` requests coming from the
+Java app, and the audio should land in the "Message Yourself" chat on the
+linked phone. (The existing "Send Test" button only exercises Twilio/CallMeBot
+today, since test messages have no audio clip to attach — see the dispatch
+note below.)
 
 ## Rolling back
 
@@ -102,9 +129,16 @@ or delete it entirely — neither affects the main app.
 
 ## API
 
-- `GET /health` — liveness + connection state.
-- `GET /status` — `{ connectionState, hasQr }`.
-- `GET /qr` — HTML page showing the current QR code (auto-refreshes).
-- `POST /send-audio` — body `{ phoneNumber, audioUrl, caption? }`, header
-  `x-notification-token: <NOTIFICATION_INTERNAL_TOKEN>`. Downloads
-  `audioUrl` and relays it as a WhatsApp audio message.
+- `GET /health` — liveness + connection state + currently-linked number.
+- `GET /status` — `{ connectionState, hasQr, linkedNumber }`.
+- `GET /qr-data` — JSON `{ connectionState, linkedNumber, qrDataUrl }`, header
+  `x-notification-token: <NOTIFICATION_INTERNAL_TOKEN>` required. This is what
+  the Java app's teacher-only dashboard endpoint calls; not meant for direct
+  browser use.
+- `GET /qr?token=<NOTIFICATION_INTERNAL_TOKEN>` — HTML fallback page showing
+  the current QR code (auto-refreshes). Manual/debug use only — prefer the
+  dashboard flow, which never exposes this URL or token to the browser.
+- `POST /send-audio` — body `{ audioUrl, caption? }`, header
+  `x-notification-token: <NOTIFICATION_INTERNAL_TOKEN>`. Downloads `audioUrl`
+  and relays it as a WhatsApp audio message to the currently-linked number
+  (self-chat) — any `phoneNumber` field is ignored by design.
