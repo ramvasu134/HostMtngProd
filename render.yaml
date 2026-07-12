@@ -130,10 +130,10 @@ services:
       # ── WhatsApp via Baileys (OPTIONAL, free, off by default) ──────────────
       # Only takes effect if you also deploy the whatsapp-baileys-service
       # block below (or elsewhere) and link a number — see that folder's
-      # README. Leaving WHATSAPP_BAILEYS_ENABLED=false keeps today's
-      # Twilio/CallMeBot behavior 100% unchanged.
+      # README. Set to "false" to instantly revert to today's
+      # Twilio/CallMeBot-only behavior (no other changes needed).
       - key: WHATSAPP_BAILEYS_ENABLED
-        value: "false"
+        value: "true"
       # e.g. https://whatsapp-baileys-service.onrender.com
       - key: WHATSAPP_BAILEYS_URL
         sync: false
