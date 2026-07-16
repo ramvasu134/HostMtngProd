@@ -575,7 +575,10 @@ public class WhatsAppNotificationService {
             }
             HttpRequest.Builder builder = HttpRequest.newBuilder()
                     .uri(URI.create(baileysUrl.replaceAll("/+$", "") + "/send-audio"))
-                    .timeout(Duration.ofSeconds(25))
+                    // Render's free tier spins whatsapp-baileys-service down after ~15 min
+                    // idle; the first request afterwards can take 20-50s just to wake it up
+                    // before any app logic runs, so this needs real headroom beyond that.
+                    .timeout(Duration.ofSeconds(50))
                     .header("Content-Type", "application/json")
                     .POST(HttpRequest.BodyPublishers.ofString(JSON.writeValueAsString(payload)));
             if (!isBlank(baileysToken)) {
@@ -611,7 +614,10 @@ public class WhatsAppNotificationService {
         try {
             HttpRequest.Builder builder = HttpRequest.newBuilder()
                     .uri(URI.create(baileysUrl.replaceAll("/+$", "") + "/qr-data"))
-                    .timeout(Duration.ofSeconds(10))
+                    // See sendViaBaileys() above — must tolerate Render free-tier cold starts,
+                    // not just a healthy warm response, or the dashboard shows a false
+                    // "unreachable" every time the service has been idle for a while.
+                    .timeout(Duration.ofSeconds(50))
                     .GET();
             if (!isBlank(baileysToken)) {
                 builder.header("x-notification-token", baileysToken);
@@ -646,7 +652,8 @@ public class WhatsAppNotificationService {
         try {
             HttpRequest.Builder builder = HttpRequest.newBuilder()
                     .uri(URI.create(baileysUrl.replaceAll("/+$", "") + "/unlink"))
-                    .timeout(Duration.ofSeconds(15))
+                    // See sendViaBaileys() above re: Render free-tier cold starts.
+                    .timeout(Duration.ofSeconds(50))
                     .POST(HttpRequest.BodyPublishers.noBody());
             if (!isBlank(baileysToken)) {
                 builder.header("x-notification-token", baileysToken);

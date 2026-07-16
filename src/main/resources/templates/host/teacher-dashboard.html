@@ -3444,8 +3444,17 @@
             const qrImg = document.getElementById('waBaileysQrImg');
             const unlinkBtn = document.getElementById('waBaileysUnlinkBtn');
             if (!section || !pill) return;
+            // Render's free tier can spin this service down after ~15 min idle; the
+            // first check afterwards can take up to ~50s just to wake it back up, so
+            // avoid it looking "stuck" on the static "checking…" text the whole time.
+            const wakeupTimer = setTimeout(() => {
+                pill.textContent = 'waking up service…';
+                pill.style.background = 'rgba(255,255,255,0.08)';
+                pill.style.color = 'var(--text-secondary)';
+            }, 4000);
             try {
                 const r = await fetch('/api/host/whatsapp-settings/baileys-status', { credentials: 'same-origin' });
+                clearTimeout(wakeupTimer);
                 if (!r.ok) { section.style.display = 'none'; return; }
                 const data = await r.json();
                 if (!data.configured) {
@@ -3475,6 +3484,7 @@
                     if (unlinkBtn) unlinkBtn.style.display = 'none';
                 }
             } catch (e) {
+                clearTimeout(wakeupTimer);
                 section.style.display = 'none';
             }
         }
