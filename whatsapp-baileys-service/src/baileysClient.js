@@ -72,8 +72,20 @@ export async function startBaileys() {
             }
 
             if (loggedOut) {
-                logger.error('[Baileys] Session was logged out from the phone — re-scan the QR code at GET /qr to relink.');
-                return; // Do NOT auto-reconnect; the stored creds are no longer valid.
+                // The stored creds are no longer valid — wipe them and restart
+                // so a fresh QR code is issued automatically instead of getting
+                // stuck in "closed" state forever until someone manually unlinks.
+                logger.warn('[Baileys] Session logged out — clearing stale credentials and restarting for a new QR code.');
+                const sessionId = process.env.BAILEYS_SESSION_ID || 'default';
+                clearAuthState(pool, sessionId)
+                    .then(() => {
+                        sock = null;
+                        latestQr = null;
+                        connectionState = 'starting';
+                        return startBaileys();
+                    })
+                    .catch((e) => logger.error({ err: e }, '[Baileys] Auto-recovery after logout failed'));
+                return;
             }
 
             logger.warn(`[Baileys] Connection closed (code=${statusCode ?? 'unknown'}). Reconnecting in 3s…`);
