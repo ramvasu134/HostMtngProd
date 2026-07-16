@@ -11,7 +11,10 @@ const RECORDING_ENABLED = meetingData ? meetingData.dataset.recordingEnabled ===
 const ICE_SERVERS = {
     iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun1.l.google.com:19302' }
+        { urls: 'stun:stun1.l.google.com:19302' },
+        { urls: 'stun:stun2.l.google.com:19302' },
+        { urls: 'stun:stun3.l.google.com:19302' },
+        { urls: 'stun:stun4.l.google.com:19302' }
     ]
 };
 
@@ -434,7 +437,11 @@ function updateMicUI(enabled) {
 function setupAudioVisualization(stream) {
     const audioContext = new (window.AudioContext || window.webkitAudioContext)();
     const analyser     = audioContext.createAnalyser();
-    const source       = audioContext.createMediaStreamSource(stream);
+    // Clone the stream to avoid interfering with the <audio> element's
+    // playback of the original stream (Chrome can "steal" a stream once
+    // it's consumed by createMediaStreamSource, leaving the element silent).
+    const cloned       = new MediaStream(stream.getAudioTracks().map(t => t.clone()));
+    const source       = audioContext.createMediaStreamSource(cloned);
     source.connect(analyser);
     analyser.fftSize = 256;
 

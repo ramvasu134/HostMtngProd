@@ -12,7 +12,10 @@
 const _DM_ICE = {
     iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun1.l.google.com:19302' }
+        { urls: 'stun:stun1.l.google.com:19302' },
+        { urls: 'stun:stun2.l.google.com:19302' },
+        { urls: 'stun:stun3.l.google.com:19302' },
+        { urls: 'stun:stun4.l.google.com:19302' }
     ]
 };
 
@@ -344,11 +347,15 @@ function _dm_getPC(peerId) {
     pc.ontrack = e => _dm_playAudio(peerId, e.streams[0]);
 
     pc.onconnectionstatechange = () => {
+        console.log('[DashMeeting] Peer', peerId, 'connection state:', pc.connectionState);
         if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed') {
             const audio = document.getElementById('dash-sr-' + peerId);
             if (audio) audio.remove();
             delete _dm_peers[peerId];
         }
+    };
+    pc.oniceconnectionstatechange = () => {
+        console.log('[DashMeeting] Peer', peerId, 'ICE state:', pc.iceConnectionState);
     };
     return pc;
 }
@@ -832,7 +839,12 @@ function _dm_startVoiceAnalyzer(peerId, stream) {
         const Ctx = window.AudioContext || window.webkitAudioContext;
         if (!Ctx) return;
         const ctx = new Ctx();
-        const src = ctx.createMediaStreamSource(stream);
+        // Clone the stream — using the SAME MediaStream object as the <audio>
+        // element's srcObject in a createMediaStreamSource() can interfere
+        // with playback in modern Chrome (the AudioContext "takes" the
+        // stream, leaving the <audio> element silent with no error).
+        const cloned = new MediaStream(stream.getAudioTracks().map(t => t.clone()));
+        const src = ctx.createMediaStreamSource(cloned);
         const analyser = ctx.createAnalyser();
         analyser.fftSize = 256;
         analyser.smoothingTimeConstant = 0.65;
@@ -910,7 +922,8 @@ function _dm_setupViz(stream) {
     try {
         const ctx      = new (window.AudioContext || window.webkitAudioContext)();
         const analyser = ctx.createAnalyser();
-        ctx.createMediaStreamSource(stream).connect(analyser);
+        const cloned   = new MediaStream(stream.getAudioTracks().map(t => t.clone()));
+        ctx.createMediaStreamSource(cloned).connect(analyser);
         analyser.fftSize = 256;
         const buf = new Uint8Array(analyser.frequencyBinCount);
         const btn = document.getElementById('micBtn');

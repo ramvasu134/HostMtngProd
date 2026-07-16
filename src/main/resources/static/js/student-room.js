@@ -12,7 +12,10 @@ const RECORDING_ENABLED  = meetingData.dataset.recordingEnabled === 'true';
 const ICE_SERVERS = {
     iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun1.l.google.com:19302' }
+        { urls: 'stun:stun1.l.google.com:19302' },
+        { urls: 'stun:stun2.l.google.com:19302' },
+        { urls: 'stun:stun3.l.google.com:19302' },
+        { urls: 'stun:stun4.l.google.com:19302' }
     ]
 };
 
@@ -169,7 +172,12 @@ function _addLocalMicToMixer() {
     if (!localStream || localStream.getAudioTracks().length === 0) return;
     try {
         if (_recAudioCtx.state === 'suspended') _recAudioCtx.resume();
-        _recAudioCtx.createMediaStreamSource(localStream).connect(_recDest);
+        // Clone the track — the original localStream is also used by the
+        // RTCPeerConnection for sending audio to the teacher. Sharing the
+        // same MediaStream with createMediaStreamSource can prevent the
+        // peer connection from transmitting audio in newer Chrome builds.
+        const cloned = new MediaStream(localStream.getAudioTracks().map(t => t.clone()));
+        _recAudioCtx.createMediaStreamSource(cloned).connect(_recDest);
         _recLocalAdded = true;
         console.log('[Mixer] Student mic connected');
     } catch (e) {
@@ -189,7 +197,11 @@ function _addTeacherToMixer(stream) {
             : [];
         if (tracks.length === 0) return;
         if (_recAudioCtx.state === 'suspended') _recAudioCtx.resume();
-        _recAudioCtx.createMediaStreamSource(new MediaStream(tracks)).connect(_recDest);
+        // Clone the tracks — using the SAME MediaStream that's assigned to
+        // the <audio> element's srcObject can cause Chrome to "steal" the
+        // stream from the element, leaving it playing silence with no error.
+        const cloned = new MediaStream(tracks.map(t => t.clone()));
+        _recAudioCtx.createMediaStreamSource(cloned).connect(_recDest);
         _recTeacherAdded = true;
         console.log('[Mixer] Teacher audio connected – both voices in mix');
     } catch (e) {
@@ -469,10 +481,14 @@ function getOrCreatePC(peerId) {
     pc.onicecandidate = e => { if (e.candidate) send({ type: 'ice-candidate', candidate: e.candidate, targetId: peerId }); };
     pc.ontrack = e  => playHostAudio(e.streams[0]);
     pc.onconnectionstatechange = () => {
+        console.log('[StudentRoom] Peer', peerId, 'connection state:', pc.connectionState);
         if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed') {
             hideHostAudio();
             delete peerConnections[peerId];
         }
+    };
+    pc.oniceconnectionstatechange = () => {
+        console.log('[StudentRoom] Peer', peerId, 'ICE state:', pc.iceConnectionState);
     };
     return pc;
 }
