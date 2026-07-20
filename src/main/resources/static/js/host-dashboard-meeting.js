@@ -735,6 +735,10 @@ function _dm_updateCardMic(userId, micOn) {
 }
 
 function _dm_flashSpeakAlert(userId, userName) {
+    // Dais is student-only. Never put the teacher on the speaking stage —
+    // teacher speech belongs in the live-transcript card, not the queue.
+    if (String(userId || '') === String(DASH_USER_ID)) return;
+
     const stage = document.getElementById('dashDaisStage');
     const empty = document.getElementById('dashDaisEmpty');
     const wave  = document.getElementById('dashDaisWave');
@@ -742,6 +746,9 @@ function _dm_flashSpeakAlert(userId, userName) {
 
     const pid   = String(userId || '');
     const label = (userName || _dm_getParticipantName(pid) || 'Student').trim();
+    // Guard by name too — unmatched teacher transcripts can arrive with an
+    // empty userId but the teacher's display name.
+    if (label && DASH_USER_NAME && label.toLowerCase() === String(DASH_USER_NAME).trim().toLowerCase()) return;
     // When the participant id isn't known (e.g. a speaker event matched only
     // by name), fall back to a name-derived key so distinct unmatched
     // speakers still get their own card instead of clobbering each other.
@@ -833,13 +840,17 @@ function _dm_moveParticipantToQueueEnd(pid) {
 
 function _dm_flashSpeakBlipBySpeaker(data) {
     if (!data) return;
+    // Teacher transcripts must never drive the Dais — students only.
+    if (data.isTeacher === true) return;
     const speakerId = data.userId || data.senderId;
+    if (speakerId && String(speakerId) === String(DASH_USER_ID)) return;
     if (speakerId) {
         _dm_flashSpeakAlert(speakerId, data.speakerName || data.userName);
         return;
     }
     const speakerName = (data.speakerName || data.userName || '').trim().toLowerCase();
     if (!speakerName) return;
+    if (DASH_USER_NAME && speakerName === String(DASH_USER_NAME).trim().toLowerCase()) return;
     const cards = Array.from(document.querySelectorAll('#participantsCards [data-pid], #participantsContent [data-pid]'));
     const matched = cards.find(c => {
         const nameEl = c.querySelector('.dm-pname');
@@ -1179,13 +1190,18 @@ function _dm_onTranscript(data) {
     // Accept messages that have text, regardless of whether 'success' is set
     if (!data || !data.text) return;
     if (data.success === false) return; // explicit server error — skip
-    _dm_flashSpeakBlipBySpeaker(data);
 
     const text        = data.text.trim();
     if (!text) return;
     const isTeacher   = data.isTeacher === true;
     const speakerName = (data.speakerName || data.userName || 'Unknown').trim();
     const userId      = String(data.userId || '');
+
+    // Dais spotlight is for students only — teacher speech stays in the
+    // live-transcript card / conversation bundler, never on the stage.
+    if (!isTeacher) {
+        _dm_flashSpeakBlipBySpeaker(data);
+    }
 
     if (isTeacher) {
         // ── Teacher spoke ───────────────────────────────────────────────────
