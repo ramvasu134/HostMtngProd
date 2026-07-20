@@ -9,7 +9,12 @@
 //   sendDashChatMessage()              — chat send button handler
 
 // ── Configuration ─────────────────────────────────────────────────────────────
-const _DM_ICE = {
+// Starts as STUN-only; upgraded to include a free TURN relay (if the server has
+// one configured) by _dm_loadIceServers() before any peer connection is created.
+// TURN is required for reliable audio when a student is behind a symmetric/
+// restrictive NAT (common on school Wi-Fi / mobile data) — STUN alone silently
+// fails in that case with no error, which is why some students had no audio.
+let _DM_ICE = {
     iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
         { urls: 'stun:stun1.l.google.com:19302' },
@@ -18,6 +23,18 @@ const _DM_ICE = {
         { urls: 'stun:stun4.l.google.com:19302' }
     ]
 };
+
+function _dm_loadIceServers() {
+    return fetch('/api/ice-servers')
+        .then(r => r.ok ? r.json() : null)
+        .then(servers => {
+            if (Array.isArray(servers) && servers.length > 0) {
+                _DM_ICE = { iceServers: servers };
+                console.log('[DashMeeting] ICE servers loaded (' + servers.length + ' entries, TURN included if configured)');
+            }
+        })
+        .catch(e => console.warn('[DashMeeting] Could not load ICE servers, using STUN-only fallback:', e));
+}
 
 // Read teacher identity injected by Thymeleaf
 const _dmEl = document.getElementById('dashMeetingData');
@@ -161,6 +178,10 @@ function _dm_stopSpeechRec() {
 function initDashboardMeeting(meetingCode) {
     _dm_code = meetingCode;
     _showDashChat();    // switch chat tab to real UI
+
+    // Load ICE servers (STUN + optional free TURN) in parallel with the mic
+    // permission prompt so it's ready before any peer connection is created.
+    _dm_loadIceServers();
 
     // Get mic first, then connect WebSocket
     navigator.mediaDevices.getUserMedia({

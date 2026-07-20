@@ -8,7 +8,12 @@ const USER_ID      = meetingData ? meetingData.dataset.userId      : '';
 const USER_NAME    = meetingData ? meetingData.dataset.userName    : '';
 const RECORDING_ENABLED = meetingData ? meetingData.dataset.recordingEnabled === 'true' : false;
 
-const ICE_SERVERS = {
+// Starts as STUN-only; upgraded to include a free TURN relay (if the server has
+// one configured) by _loadIceServers() before any peer connection is created.
+// TURN is required for reliable audio when a student is behind a symmetric/
+// restrictive NAT (common on school Wi-Fi / mobile data) — STUN alone silently
+// fails in that case with no error, which is why some students had no audio.
+let ICE_SERVERS = {
     iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
         { urls: 'stun:stun1.l.google.com:19302' },
@@ -17,6 +22,18 @@ const ICE_SERVERS = {
         { urls: 'stun:stun4.l.google.com:19302' }
     ]
 };
+
+function _loadIceServers() {
+    return fetch('/api/ice-servers')
+        .then(r => r.ok ? r.json() : null)
+        .then(servers => {
+            if (Array.isArray(servers) && servers.length > 0) {
+                ICE_SERVERS = { iceServers: servers };
+                console.log('[HostRoom] ICE servers loaded (' + servers.length + ' entries, TURN included if configured)');
+            }
+        })
+        .catch(e => console.warn('[HostRoom] Could not load ICE servers, using STUN-only fallback:', e));
+}
 
 // ===== State =====
 let stompClient    = null;
@@ -40,6 +57,7 @@ let speakersInMeeting = new Set(); // Set of userIds who have spoken
 document.addEventListener('DOMContentLoaded', function () {
     // Ensure initial tab state is correct
     switchTab('participants');
+    _loadIceServers();
     initAudio();
     startMeetingTimer();
     // Seed student strip from server-rendered participant list (students already in room)

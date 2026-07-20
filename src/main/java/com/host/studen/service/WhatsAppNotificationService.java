@@ -193,7 +193,7 @@ public class WhatsAppNotificationService {
      * persisted. Builds the message with a clickable link to the recording,
      * dispatches it, and records the result in the per-teacher status log.
      */
-    @Async
+    @Async(com.host.studen.config.AsyncConfig.NOTIFICATION_EXECUTOR)
     public void notifyTeacherOnRecording(Recording recording, User student, User teacher) {
         try {
             // ── Silent-skip preconditions (per "plug-and-play" spec) ─────────
@@ -566,7 +566,38 @@ public class WhatsAppNotificationService {
      * number (via the dashboard-gated QR flow), and re-linking replaces the
      * single active recipient for everyone.
      */
+    private static final int BAILEYS_MAX_ATTEMPTS = 3;
+    private static final long BAILEYS_RETRY_DELAY_MS = 4000;
+
+    /**
+     * Retries transient failures (network errors, 5xx, request timeout) so a single
+     * hiccup under concurrent load (e.g. many students' recordings landing at once,
+     * or the Node service still warming up) doesn't permanently drop a recording's
+     * WhatsApp delivery. Does NOT retry deterministic non-transient outcomes like
+     * "not linked yet" (503 with a clear message) since retrying won't help.
+     */
     private BaileysSendResult sendViaBaileys(String mediaUrl, String caption) {
+        BaileysSendResult last = BaileysSendResult.fail("not attempted");
+        for (int attempt = 1; attempt <= BAILEYS_MAX_ATTEMPTS; attempt++) {
+            last = sendViaBaileysOnce(mediaUrl, caption);
+            if (last.success || !last.transient_) {
+                return last;
+            }
+            if (attempt < BAILEYS_MAX_ATTEMPTS) {
+                log.info("Baileys attempt {}/{} failed transiently, retrying in {}ms: {}",
+                        attempt, BAILEYS_MAX_ATTEMPTS, BAILEYS_RETRY_DELAY_MS, last.error);
+                try {
+                    Thread.sleep(BAILEYS_RETRY_DELAY_MS);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+            }
+        }
+        return last;
+    }
+
+    private BaileysSendResult sendViaBaileysOnce(String mediaUrl, String caption) {
         try {
             com.fasterxml.jackson.databind.node.ObjectNode payload = JSON.createObjectNode();
             payload.put("audioUrl", mediaUrl);
@@ -594,11 +625,18 @@ public class WhatsAppNotificationService {
                 log.info("Baileys send OK (HTTP {}, sentTo={})", res.statusCode(), sentTo);
                 return BaileysSendResult.ok(sentTo);
             }
+            // 503 = "not linked yet" (deterministic — no point retrying); anything else
+            // (e.g. 500 mid-transcode blip, 502/504 from a cold-starting proxy) is transient.
+            boolean transientFailure = res.statusCode() != 503;
             log.warn("Baileys send failed (HTTP {}): {}", res.statusCode(), responseBody);
-            return BaileysSendResult.fail("HTTP " + res.statusCode() + ": " + responseBody);
+            return BaileysSendResult.fail("HTTP " + res.statusCode() + ": " + responseBody, transientFailure);
+        } catch (java.io.IOException e) {
+            // Covers HttpTimeoutException and ConnectException (both are IOException subtypes) — network blips.
+            log.warn("Baileys send transient exception: {}", e.getMessage());
+            return BaileysSendResult.fail(e.getMessage() != null ? e.getMessage() : "network error", true);
         } catch (Exception e) {
             log.warn("Baileys send exception: {}", e.getMessage());
-            return BaileysSendResult.fail(e.getMessage() != null ? e.getMessage() : "unknown error");
+            return BaileysSendResult.fail(e.getMessage() != null ? e.getMessage() : "unknown error", false);
         }
     }
 
@@ -1040,11 +1078,13 @@ public class WhatsAppNotificationService {
         final boolean success;
         final String sentTo;
         final String error;
-        private BaileysSendResult(boolean success, String sentTo, String error) {
-            this.success = success; this.sentTo = sentTo; this.error = error;
+        final boolean transient_; // true = worth retrying (network blip, 5xx); false = deterministic failure
+        private BaileysSendResult(boolean success, String sentTo, String error, boolean transient_) {
+            this.success = success; this.sentTo = sentTo; this.error = error; this.transient_ = transient_;
         }
-        static BaileysSendResult ok(String sentTo)  { return new BaileysSendResult(true,  sentTo, null); }
-        static BaileysSendResult fail(String err)   { return new BaileysSendResult(false, null,   err); }
+        static BaileysSendResult ok(String sentTo)  { return new BaileysSendResult(true,  sentTo, null, false); }
+        static BaileysSendResult fail(String err, boolean transientFailure) { return new BaileysSendResult(false, null, err, transientFailure); }
+        static BaileysSendResult fail(String err)   { return new BaileysSendResult(false, null,   err, false); }
     }
 
     /** @return true when Twilio is the active primary provider. */

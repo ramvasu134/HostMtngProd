@@ -9,7 +9,12 @@ const USER_ID            = meetingData.dataset.userId;
 const USER_NAME          = meetingData.dataset.userName;
 const RECORDING_ENABLED  = meetingData.dataset.recordingEnabled === 'true';
 
-const ICE_SERVERS = {
+// Starts as STUN-only; upgraded to include a free TURN relay (if the server has
+// one configured) by _loadIceServers() before any peer connection is created.
+// TURN is required for reliable audio when a student is behind a symmetric/
+// restrictive NAT (common on school Wi-Fi / mobile data) — STUN alone silently
+// fails in that case with no error, which is why some students had no audio.
+let ICE_SERVERS = {
     iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
         { urls: 'stun:stun1.l.google.com:19302' },
@@ -18,6 +23,18 @@ const ICE_SERVERS = {
         { urls: 'stun:stun4.l.google.com:19302' }
     ]
 };
+
+function _loadIceServers() {
+    return fetch('/api/ice-servers')
+        .then(r => r.ok ? r.json() : null)
+        .then(servers => {
+            if (Array.isArray(servers) && servers.length > 0) {
+                ICE_SERVERS = { iceServers: servers };
+                console.log('[StudentRoom] ICE servers loaded (' + servers.length + ' entries, TURN included if configured)');
+            }
+        })
+        .catch(e => console.warn('[StudentRoom] Could not load ICE servers, using STUN-only fallback:', e));
+}
 
 // ===== State =====
 let localStream    = null;
@@ -62,6 +79,7 @@ function buildInitials(name) {
 
 document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('userInitials').textContent = buildInitials(USER_NAME);
+    _loadIceServers();
 
     // Restore Auto Join preference
     const autoJoin = localStorage.getItem('sr_autoJoin') === 'true';

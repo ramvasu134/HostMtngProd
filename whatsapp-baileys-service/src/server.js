@@ -7,6 +7,39 @@ import { convertToOggOpus } from './audioConvert.js';
 const app = express();
 app.use(express.json());
 
+/**
+ * Bounded concurrency gate for /send-audio's full pipeline (download +
+ * ffmpeg transcode + WhatsApp send). Render's free-tier instance has very
+ * limited CPU/RAM; letting an unbounded burst of concurrent ffmpeg
+ * transcodes run at once (e.g. 20-50 students' recordings landing within
+ * the same few seconds) can starve the process and cause some requests to
+ * time out — which looked like "some students' recordings just don't
+ * arrive". Instead, extra requests queue here (FIFO) and run as soon as a
+ * slot frees up, so every recording is still eventually delivered rather
+ * than being dropped or racing for scarce CPU.
+ */
+const MAX_CONCURRENT_SENDS = Number(process.env.BAILEYS_MAX_CONCURRENT_SENDS || 3);
+let _activeSends = 0;
+const _sendQueue = [];
+
+function withSendSlot(fn) {
+    return new Promise((resolve, reject) => {
+        const run = () => {
+            _activeSends++;
+            fn().then(resolve, reject).finally(() => {
+                _activeSends--;
+                const next = _sendQueue.shift();
+                if (next) next();
+            });
+        };
+        if (_activeSends < MAX_CONCURRENT_SENDS) {
+            run();
+        } else {
+            _sendQueue.push(run);
+        }
+    });
+}
+
 app.get('/health', (_req, res) => {
     res.status(200).json({ status: 'ok', service: 'whatsapp-baileys-service', ...getStatus() });
 });
@@ -125,25 +158,27 @@ app.post('/send-audio', async (req, res) => {
     }
 
     try {
-        const response = await axios.get(audioUrl, { responseType: 'arraybuffer', timeout: 20000 });
-        const sourceMimetype = response.headers['content-type'] || 'audio/mp4';
-        const sourceBuffer = Buffer.from(response.data);
+        const sentTo = await withSendSlot(async () => {
+            const response = await axios.get(audioUrl, { responseType: 'arraybuffer', timeout: 20000 });
+            const sourceMimetype = response.headers['content-type'] || 'audio/mp4';
+            const sourceBuffer = Buffer.from(response.data);
 
-        // Recordings are captured client-side as WebM/Opus (browser MediaRecorder),
-        // which WhatsApp's mobile app cannot reliably play as an audio attachment.
-        // Re-encode to Ogg/Opus (WhatsApp's own voice-note format) before sending;
-        // fall back to the original bytes if conversion ever fails, so a transcode
-        // hiccup degrades to "might not play" rather than "recording never arrives".
-        let audioBuffer = sourceBuffer;
-        let mimetype = sourceMimetype;
-        try {
-            audioBuffer = await convertToOggOpus(sourceBuffer);
-            mimetype = 'audio/ogg; codecs=opus';
-        } catch (convertErr) {
-            console.error('[whatsapp-baileys-service] audio conversion failed, sending original bytes:', convertErr.message);
-        }
+            // Recordings are captured client-side as WebM/Opus (browser MediaRecorder),
+            // which WhatsApp's mobile app cannot reliably play as an audio attachment.
+            // Re-encode to Ogg/Opus (WhatsApp's own voice-note format) before sending;
+            // fall back to the original bytes if conversion ever fails, so a transcode
+            // hiccup degrades to "might not play" rather than "recording never arrives".
+            let audioBuffer = sourceBuffer;
+            let mimetype = sourceMimetype;
+            try {
+                audioBuffer = await convertToOggOpus(sourceBuffer);
+                mimetype = 'audio/ogg; codecs=opus';
+            } catch (convertErr) {
+                console.error('[whatsapp-baileys-service] audio conversion failed, sending original bytes:', convertErr.message);
+            }
 
-        const sentTo = await sendAudioMessage(audioBuffer, mimetype, caption);
+            return sendAudioMessage(audioBuffer, mimetype, caption);
+        });
 
         return res.status(200).json({ success: true, message: 'Audio sent via WhatsApp (Baileys).', sentTo });
     } catch (err) {

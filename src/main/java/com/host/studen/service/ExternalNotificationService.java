@@ -79,7 +79,7 @@ public class ExternalNotificationService {
         }
     }
 
-    @Async
+    @Async(com.host.studen.config.AsyncConfig.NOTIFICATION_EXECUTOR)
     public void notifyRecordingReady(User teacher, Recording recording) {
         try {
             if (!externalNotificationReady) {

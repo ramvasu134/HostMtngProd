@@ -108,6 +108,17 @@ app.whatsapp.baileys.url=https://<this-service-url>
 app.whatsapp.baileys.token=<same value as NOTIFICATION_INTERNAL_TOKEN above>
 ```
 
+### 4. Concurrency at scale (classrooms of 20-50 students)
+
+`/send-audio` downloads, transcodes (ffmpeg), and sends each clip — CPU/RAM
+heavy work that can overwhelm a free-tier instance if many students'
+recordings land within the same few seconds. To avoid that, this service
+runs at most `BAILEYS_MAX_CONCURRENT_SENDS` (default **3**) of these
+pipelines at once; anything beyond that queues in memory (FIFO) instead of
+being dropped, so every recording still gets delivered — just possibly a
+little later during a burst. Raise it (env var on Render) if you upgrade to
+a paid instance with more CPU.
+
 Or as env vars: `WHATSAPP_BAILEYS_ENABLED=true`, `WHATSAPP_BAILEYS_URL=...`,
 `WHATSAPP_BAILEYS_TOKEN=...`.
 

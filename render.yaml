@@ -146,6 +146,17 @@ services:
           name: whatsapp-baileys-service
           envVarKey: NOTIFICATION_INTERNAL_TOKEN
 
+      # ── WebRTC TURN relay (OPTIONAL, free, off by default) ─────────────────
+      # Without this, WebRTC audio only works over STUN, which silently fails
+      # for students behind symmetric/restrictive NATs (school Wi-Fi, mobile
+      # data) — this was the root cause of some students having no audio.
+      # Sign up free (20 GB/month, no card) at https://www.metered.ca/tools/openrelay/
+      # then fill these in via the Render dashboard (kept sync:false — not secret-scanned).
+      - key: TURN_APP_NAME
+        sync: false
+      - key: TURN_API_KEY
+        sync: false
+
       # ── Data Seeding (enable once to create superadmin + demo users) ───────
       # After first successful login, set to "false" and redeploy for security
       - key: SEED_ENABLED
